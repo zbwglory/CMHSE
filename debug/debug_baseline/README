@@ -1,0 +1,5 @@
+This repo is simply the mean of c3d features of whole video VS GRU of whole paragraph
+1. The word2vec is the glove feature of activitynet
+2. W2V is finetuned with caption GRU
+3. C3D is pre-extracted
+4. The result is 7.1+-
