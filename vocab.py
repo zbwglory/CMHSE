@@ -2,11 +2,9 @@
 import nltk
 import pickle
 from collections import Counter
-from pycocotools.coco import COCO
 import json
 import argparse
 import os
-from tqdm import tqdm
 
 annotations = {
     'coco_precomp': ['train_caps.txt', 'dev_caps.txt'],

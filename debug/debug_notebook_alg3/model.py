@@ -104,7 +104,7 @@ class EncoderText(nn.Module):
     def init_weights(self):
 #        embed()
 #        self.embed.weight.data.uniform_(-0.1, 0.1)
-        coco_glove = torch.from_numpy(np.load('anet_precomp_w2v.npz')['arr_0'].astype(float)).float()
+        coco_glove = torch.from_numpy(np.load('vocab/anet_precomp_w2v.npz')['arr_0'].astype(float)).float()
         self.embed.weight.data = coco_glove
 
     def forward(self, x, lengths):
