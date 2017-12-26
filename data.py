@@ -35,8 +35,9 @@ class PrecompDataset(data.Dataset):
     # handle the image redundancy
     cur_vid = self.ann_id[index]
     image_data = self.video_emb[cur_vid]['c3d_features'].value
-    if image_data.shape[0] > 140:
-      ind = np.arange(0, image_data.shape[0], image_data.shape[0]/140.0).astype(int).tolist()
+    max_frames = 600.0
+    if image_data.shape[0] > max_frames:
+      ind = np.arange(0, image_data.shape[0], image_data.shape[0]/max_frames).astype(int).tolist()
       image_data = image_data[ind,:]
 
     image = torch.Tensor(image_data)

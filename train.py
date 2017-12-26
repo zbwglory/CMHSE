@@ -31,7 +31,7 @@ def main():
             help='Path to saved vocabulary pickle files.')
   parser.add_argument('--margin', default=0.2, type=float,
             help='Rank loss margin.')
-  parser.add_argument('--num_epochs', default=100, type=int,
+  parser.add_argument('--num_epochs', default=50, type=int,
             help='Number of training epochs.')
   parser.add_argument('--batch_size', default=64, type=int,
             help='Size of a training mini-batch.')
@@ -45,7 +45,7 @@ def main():
             help='Number of GRU layers.')
   parser.add_argument('--learning_rate', default=.001, type=float,
             help='Initial learning rate.')
-  parser.add_argument('--lr_update', default=25, type=int,
+  parser.add_argument('--lr_update', default=20, type=int,
             help='Number of epochs to update the learning rate.')
   parser.add_argument('--workers', default=10, type=int,
             help='Number of data loader workers.')
@@ -69,6 +69,8 @@ def main():
             help='Do not normalize the image embeddings.')
   parser.add_argument('--gpu_id', default=0, type=int,
             help='GPU to use.')
+  parser.add_argument('--rnn_type', default='maxout', choices=['maxout', 'seq2seq', 'attention'],
+            help='Type of recurrent model.')
   opt = parser.parse_args()
   print(opt)
 

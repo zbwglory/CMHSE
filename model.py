@@ -14,19 +14,18 @@ from IPython import embed
 from layers import *
 
 def EncoderImage(data_name, img_dim, embed_size, finetune=False,
-         cnn_type='vgg19', use_abs=False, no_imgnorm=False):
+         cnn_type='vgg19', no_imgnorm=False, rnn_type='maxout', bidirectional=False):
   """A wrapper to image encoders. Chooses between an encoder that uses
   precomputed image features, `EncoderImagePrecomp`, or an encoder that
   computes image features on the fly `EncoderImageFull`.
   """
   if data_name.endswith('_precomp'):
-    img_enc = EncoderImagePrecomp(
-      img_dim, embed_size, use_abs, no_imgnorm)
+    img_enc = EncoderImagePrecomp(img_dim, embed_size, no_imgnorm=no_imgnorm, bidirectional=bidirectional, rnn_type=rnn_type)
 
   return img_enc
 
 class EncoderImagePrecomp(nn.Module):
-  def __init__(self, img_dim, embed_size, dropout=0.5, no_imgnorm=False, bidirectional=False):
+  def __init__(self, img_dim, embed_size, dropout=0.5, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
     super(EncoderImagePrecomp, self).__init__()
     self.embed_size = embed_size
     self.no_imgnorm = no_imgnorm
@@ -34,9 +33,14 @@ class EncoderImagePrecomp(nn.Module):
 
     num_layers = 1
     self.dropout = nn.Dropout(dropout)
-    # self.rnn = Seq2Seq(img_dim, embed_size, rnn_bidirectional=bidirectional)
-    self.rnn = Attention(img_dim, embed_size, rnn_bidirectional=bidirectional)
-    # self.rnn = Maxout(img_dim, embed_size, rnn_bidirectional=bidirectional)
+    if rnn_type == 'attention':
+      self.rnn = Attention(img_dim, embed_size, rnn_bidirectional=bidirectional)
+    elif rnn_type == 'seq2seq':
+      self.rnn = Seq2Seq(img_dim, embed_size, rnn_bidirectional=bidirectional)
+    elif rnn_type == 'maxout':
+      self.rnn = Maxout(img_dim, embed_size, rnn_bidirectional=bidirectional)
+    else:
+      raise ValueError('Unsupported RNN type')
 
     # self.mlp = GroupMLP(embed_size, 2048, embed_size, drop=0.5, groups=64)
 
@@ -51,7 +55,7 @@ class EncoderImagePrecomp(nn.Module):
     # return F.normalize(self.mlp(outputs))
 
 class EncoderText(nn.Module):
-  def __init__(self, vocab_size, word_dim, embed_size, num_layers, dropout=0.5, bidirectional=False):
+  def __init__(self, vocab_size, word_dim, embed_size, num_layers, dropout=0.5, bidirectional=False, rnn_type='maxout'):
     super(EncoderText, self).__init__()
     self.embed_size = embed_size
     self.bidirectional = bidirectional
@@ -61,9 +65,14 @@ class EncoderText(nn.Module):
 
     # caption embedding
     self.dropout = nn.Dropout(dropout)
-    # self.rnn = Seq2Seq(word_dim, embed_size, rnn_bidirectional=bidirectional)
-    self.rnn = Attention(word_dim, embed_size, rnn_bidirectional=bidirectional)
-    # self.rnn = Maxout(word_dim, embed_size, rnn_bidirectional=bidirectional)
+    if rnn_type == 'attention':
+      self.rnn = Attention(word_dim, embed_size, rnn_bidirectional=bidirectional)
+    elif rnn_type == 'seq2seq':
+      self.rnn = Seq2Seq(word_dim, embed_size, rnn_bidirectional=bidirectional)
+    elif rnn_type == 'maxout':
+      self.rnn = Maxout(word_dim, embed_size, rnn_bidirectional=bidirectional)
+    else:
+      raise ValueError('Unsupported RNN type')
 
     # self.mlp = GroupMLP(embed_size, 2048, embed_size, drop=0.5, groups=64)
 
@@ -144,9 +153,9 @@ class VSE(object):
     # Build Models
     self.grad_clip = opt.grad_clip
     self.img_enc = EncoderImage(opt.data_name, opt.img_dim, opt.embed_size,
-                  no_imgnorm=opt.no_imgnorm)
+                  no_imgnorm=opt.no_imgnorm, rnn_type=opt.rnn_type)
     self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim,
-                   opt.embed_size, opt.num_layers)
+                   opt.embed_size, opt.num_layers, rnn_type=opt.rnn_type)
     if torch.cuda.is_available():
       self.img_enc.cuda()
       self.txt_enc.cuda()
