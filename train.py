@@ -94,6 +94,8 @@ def main():
   print('Print out models:')
   print(model.img_enc)
   print(model.txt_enc)
+  print(model.img_seq_enc)
+  print(model.txt_seq_enc)
 
   # optionally resume from a checkpoint
   if opt.resume:

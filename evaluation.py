@@ -86,13 +86,13 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   img_embs = None
   cap_embs = None
   batch_id = 0
-  for i, (images, captions, lengths_img, lengths_cap) in enumerate(data_loader):
+  for i, (images, captions, lengths_img, lengths_cap, ind, seg_num) in enumerate(data_loader):
     # make sure val logger is used
     model.logger = val_logger
 
     # compute the embeddings
     with torch.no_grad():
-      img_emb, cap_emb = model.forward_emb(images, captions, lengths_img, lengths_cap)
+      img_emb, cap_emb = model.structure_emb(images, captions, lengths_img, lengths_cap, ind, seg_num)
 
     # initialize the numpy arrays given the size of the embeddings
     if img_embs is None:

@@ -17,7 +17,7 @@ class PrecompDataset(data.Dataset):
 
   def __init__(self, data_path, data_split, vocab):
     self.vocab = vocab
-    loc = '/data1/hexianghu/activitynet/captions/'
+    loc = '/data2/bwzhang/anet_img/captions/'
 
     # Captions
     self.jsondict = jsonmod.load(open(loc+'{}.json'.format(data_split), 'r'))
@@ -26,58 +26,113 @@ class PrecompDataset(data.Dataset):
       self.ann_id[i] = keys
 
     # Image features
-    self.video_emb = h5py.File('sub_activitynet_v1-3.c3d.hdf5')
+    self.video_emb = h5py.File('../vsepp-c3d/sub_activitynet_v1-3.c3d.hdf5')
 
     self.length = len(self.ann_id)
+
+  def img_cap_feat_combine(self, c3d_feat, captions, cur_vid):
+
+    #### Videos ####
+    frame_duration = self.jsondict[cur_vid]['duration']
+    segment_number = len(self.jsondict[cur_vid]['timestamps'])
+    c3d_feat_len = c3d_feat.shape[0]
+
+    video_segment_c3d = []
+
+    for seg_id in range(segment_number):
+        picked_segment = self.jsondict[cur_vid]['timestamps'][seg_id]
+        start_frame = int(np.floor(picked_segment[0] / frame_duration * c3d_feat_len))
+        end_frame = int(np.ceil(picked_segment[1] / frame_duration * c3d_feat_len))
+
+        if start_frame > end_frame:
+            #one video is misaligned
+            end_frame = start_frame
+
+        c3d_cur_feat = c3d_feat[start_frame: end_frame+1, :]
+        max_frames = 140.0
+        if c3d_cur_feat.shape[0] > max_frames:
+          ind = np.arange(0, c3d_cur_feat.shape[0], c3d_cur_feat.shape[0]/max_frames).astype(int).tolist()
+          c3d_cur_feat = c3d_cur_feat[ind,:]
+
+        video_segment_c3d.append(c3d_cur_feat)
+
+    lengths_vid = [len(vid) for vid in video_segment_c3d]
+    video_segment_torch = torch.zeros(len(video_segment_c3d), max(lengths_vid), 500)
+    for i, vid in enumerate(video_segment_c3d):
+      end = lengths_vid[i]
+      video_segment_torch[i, :end, :] = vid[:end, :]
+
+
+    #### Captions ####
+
+    vocab = self.vocab
+
+    caption_segment = []
+    length_cap = []
+
+    for cap in captions:
+        tokens_cap = nltk.tokenize.word_tokenize(cap.lower()) 
+        caption = []
+        caption.append(vocab('BOS'))
+        caption.extend([vocab(token) for token in tokens_cap])
+        caption.append(vocab('EOS'))
+        target_cap = torch.Tensor(caption)
+        caption_segment.append(target_cap)
+
+    lengths_cap = [len(cap) for cap in caption_segment]
+    caption_segment_torch = torch.zeros(len(caption_segment), max(lengths_cap)).long()
+    for i, cap in enumerate(caption_segment):
+      end = lengths_cap[i]
+      caption_segment_torch[i, :end] = cap[:end]
+
+    seg_num = len(video_segment_c3d)
+
+    lengths_vid = torch.Tensor(lengths_vid).long()
+    lengths_cap = torch.Tensor(lengths_cap).long()
+
+    return video_segment_torch, caption_segment_torch, lengths_vid, lengths_cap, seg_num 
+
 
 
   def __getitem__(self, index):
     # handle the image redundancy
     cur_vid = self.ann_id[index]
     image_data = self.video_emb[cur_vid]['c3d_features'].value
-    max_frames = 600.0
-    if image_data.shape[0] > max_frames:
-      ind = np.arange(0, image_data.shape[0], image_data.shape[0]/max_frames).astype(int).tolist()
-      image_data = image_data[ind,:]
-
     image = torch.Tensor(image_data)
     captions = self.jsondict[cur_vid]['sentences']
-    # caption  = captions[segment_rand_pick_ind]
-    caption = ' '.join(captions)
-    vocab = self.vocab
 
-    # Convert caption (string) to word ids.
-    tokens = nltk.tokenize.word_tokenize(
-      caption.lower())
-    caption = []
-    caption.append(vocab('BOS'))
-    caption.extend([vocab(token) for token in tokens])
-    caption.append(vocab('EOS'))
-    target = torch.Tensor(caption)
+    video_segment_c3d, caption_segment, lengths_vid, lengths_cap, seg_num = self.img_cap_feat_combine(image, captions, cur_vid)
 
-    return image, target
+    return video_segment_c3d, caption_segment, lengths_vid, lengths_cap, index, seg_num
 
   def __len__(self):
     return self.length
 
 def collate_fn(data_batch):
-  _images, _captions = zip(*data_batch)
+  _videos, _captions, _lengths_small_vid, _lengths_small_cap, _ind, _seg_num = zip(*data_batch)
 
   # Merge images
-  lengths_img = [len(img) for img in _images]
-  images = torch.zeros(len(_images), max(lengths_img), 500)
-  for i, img in enumerate(_images):
-    end = lengths_img[i]
-    images[i, :end, :] = img[:end, :]
+  lengths_vid = torch.cat(_lengths_small_vid, 0)
+  videos = torch.zeros(len(lengths_vid), lengths_vid.max(), 500)
+  _cur_ind = 0
+  for i, _vid_seg in enumerate(_videos):
+      for j, vid in enumerate(_vid_seg):
+          end = lengths_vid[_cur_ind]
+          videos[_cur_ind, :end, :] = vid[:end, :]
+          _cur_ind = _cur_ind + 1
 
   # Merget captions
-  lengths_cap = [len(cap) for cap in _captions]
-  captions = torch.zeros(len(_captions), max(lengths_cap)).long()
-  for i, cap in enumerate(_captions):
-    end = lengths_cap[i]
-    captions[i, :end] = cap[:end]
+  lengths_cap = torch.cat(_lengths_small_cap, 0)
+  captions = torch.zeros(len(lengths_cap), lengths_cap.max()).long()
+  _cur_ind = 0
+  for i, _cap_seg in enumerate(_captions):
+      for j, cap in enumerate(_cap_seg):
+          end = lengths_cap[_cur_ind]
+          captions[_cur_ind, :end] = cap[:end]
+          _cur_ind = _cur_ind + 1
 
-  return images, captions, lengths_img, lengths_cap
+
+  return videos, captions, lengths_vid, lengths_cap, _ind, _seg_num
 
 def get_precomp_loader(data_path, data_split, vocab, opt, batch_size=100,
              shuffle=True, num_workers=2):

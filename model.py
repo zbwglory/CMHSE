@@ -24,6 +24,36 @@ def EncoderImage(data_name, img_dim, embed_size, finetune=False,
 
   return img_enc
 
+class EncoderSequence(nn.Module):
+  def __init__(self, img_dim, embed_size, dropout=0.5, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
+    super(EncoderSequence, self).__init__()
+    self.embed_size = embed_size
+    self.no_imgnorm = no_imgnorm
+    self.bidirectional = bidirectional
+
+    num_layers = 1
+    self.dropout = nn.Dropout(dropout)
+    if rnn_type == 'attention':
+      self.rnn = Attention(img_dim, embed_size, rnn_bidirectional=bidirectional)
+    elif rnn_type == 'seq2seq':
+      self.rnn = Seq2Seq(img_dim, embed_size, rnn_bidirectional=bidirectional)
+    elif rnn_type == 'maxout':
+      self.rnn = Maxout(img_dim, embed_size, rnn_bidirectional=bidirectional)
+    else:
+      raise ValueError('Unsupported RNN type')
+
+    # self.mlp = GroupMLP(embed_size, 2048, embed_size, drop=0.5, groups=64)
+
+  def forward(self, x, lengths):
+    """Extract image feature vectors."""
+    # img_emb = self.dropout(x)
+    # outputs = self.rnn(img_emb, lengths)
+    outputs = self.rnn(x, lengths)
+
+    # normalization in the joint embedding space
+    return F.normalize(outputs)
+    # return F.normalize(self.mlp(outputs))
+
 class EncoderImagePrecomp(nn.Module):
   def __init__(self, img_dim, embed_size, dropout=0.5, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
     super(EncoderImagePrecomp, self).__init__()
@@ -107,7 +137,7 @@ class ContrastiveLoss(nn.Module):
     super(ContrastiveLoss, self).__init__()
     self.margin = margin
     if measure == 'order':
-      self.sim = order_sim
+      NotImplemented
     else:
       self.sim = cosine_sim
 
@@ -156,9 +186,15 @@ class VSE(object):
                   no_imgnorm=opt.no_imgnorm, rnn_type=opt.rnn_type)
     self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim,
                    opt.embed_size, opt.num_layers, rnn_type=opt.rnn_type)
+    self.img_seq_enc = EncoderSequence(opt.embed_size, opt.embed_size,
+                  rnn_type=opt.rnn_type)
+    self.txt_seq_enc = EncoderSequence(opt.embed_size, opt.embed_size,
+                  rnn_type=opt.rnn_type)
     if torch.cuda.is_available():
       self.img_enc.cuda()
       self.txt_enc.cuda()
+      self.img_seq_enc.cuda()
+      self.txt_seq_enc.cuda()
       cudnn.benchmark = True
 
     # Loss and Optimizer
@@ -167,6 +203,8 @@ class VSE(object):
                      max_violation=opt.max_violation)
     params = list(self.txt_enc.parameters())
     params += list(self.img_enc.parameters())
+    params += list(self.img_seq_enc.parameters())
+    params += list(self.txt_seq_enc.parameters())
     self.params = params
 
     self.optimizer = torch.optim.Adam(params, lr=opt.learning_rate)
@@ -180,18 +218,24 @@ class VSE(object):
   def load_state_dict(self, state_dict):
     self.img_enc.load_state_dict(state_dict[0])
     self.txt_enc.load_state_dict(state_dict[1])
+    self.img_seq_enc.load_state_dict(state_dict[0])
+    self.txt_seq_enc.load_state_dict(state_dict[0])
 
   def train_start(self):
     """switch to train mode
     """
     self.img_enc.train()
     self.txt_enc.train()
+    self.img_seq_enc.train()
+    self.txt_seq_enc.train()
 
   def val_start(self):
     """switch to evaluate mode
     """
     self.img_enc.eval()
     self.txt_enc.eval()
+    self.img_seq_enc.eval()
+    self.txt_seq_enc.eval()
 
   def forward_emb(self, images, captions, lengths_img, lengths_cap):
     """Compute the image and caption embeddings
@@ -204,9 +248,25 @@ class VSE(object):
       captions = captions.cuda()
 
     # Forward
-    img_emb = self.img_enc(images, Variable(torch.Tensor(lengths_img)))
-    cap_emb = self.txt_enc(captions, Variable(torch.Tensor(lengths_cap)))
+    img_emb = self.img_enc(images, Variable(lengths_img))
+    cap_emb = self.txt_enc(captions, Variable(lengths_cap))
     return img_emb, cap_emb
+
+  def structure_emb(self, images, captions, lengths_img, lengths_cap, ind, seg_num):
+    img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
+    img_reshape_emb = Variable(torch.zeros(len(ind), max(seg_num), img_emb.shape[1])).cuda()
+    cap_reshape_emb = Variable(torch.zeros(len(ind), max(seg_num), cap_emb.shape[1])).cuda()
+
+    cur_displace = 0
+    for i, end_place in enumerate(seg_num):
+      img_reshape_emb[i, 0:end_place, :] = img_emb[cur_displace : cur_displace + end_place, :]
+      cap_reshape_emb[i, 0:end_place, :] = cap_emb[cur_displace : cur_displace + end_place, :]
+      cur_displace = cur_displace + end_place
+
+    img_seq_emb = self.img_seq_enc(img_reshape_emb, Variable(torch.Tensor(seg_num)))
+    cap_seq_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(seg_num)))
+
+    return img_seq_emb, cap_seq_emb
 
   def forward_loss(self, img_emb, cap_emb, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
@@ -215,7 +275,7 @@ class VSE(object):
     self.logger.update('Le', loss.data[0], img_emb.size(0))
     return loss
 
-  def train_emb(self, images, captions, lengths_img, lengths_cap, *args):
+  def train_emb(self, images, captions, lengths_img, lengths_cap, ind, seg_num, *args):
     """One training step given images and captions.
     """
     self.Eiters += 1
@@ -223,7 +283,7 @@ class VSE(object):
     self.logger.update('lr', self.optimizer.param_groups[0]['lr'])
 
     # compute the embeddings
-    img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
+    img_emb, cap_emb = self.structure_emb(images, captions, lengths_img, lengths_cap, ind, seg_num)
 
     # measure accuracy and record loss
     self.optimizer.zero_grad()
