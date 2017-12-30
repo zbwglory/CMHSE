@@ -45,7 +45,7 @@ def main():
             help='Number of GRU layers.')
   parser.add_argument('--learning_rate', default=.001, type=float,
             help='Initial learning rate.')
-  parser.add_argument('--lr_update', default=20, type=int,
+  parser.add_argument('--lr_update', default=10, type=int,
             help='Number of epochs to update the learning rate.')
   parser.add_argument('--workers', default=10, type=int,
             help='Number of data loader workers.')
@@ -71,6 +71,15 @@ def main():
             help='GPU to use.')
   parser.add_argument('--rnn_type', default='maxout', choices=['maxout', 'seq2seq', 'attention'],
             help='Type of recurrent model.')
+  parser.add_argument('--img_first_size', default=1024, type=int,
+            help='first img layer emb size')
+  parser.add_argument('--cap_first_size', default=1024, type=int,
+            help='first cap layer emb size')
+  parser.add_argument('--img_first_dropout', default=0, type=float,
+            help='first img layer emb size')
+  parser.add_argument('--cap_first_dropout', default=0, type=float,
+            help='first cap layer emb size')
+ 
   opt = parser.parse_args()
   print(opt)
 
@@ -186,7 +195,7 @@ def train(opt, train_loader, model, epoch, val_loader):
 
 def validate(opt, val_loader, model):
   # compute the encoding for all the validation images and captions
-  img_embs, cap_embs = encode_data(
+  img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs = encode_data(
     model, val_loader, opt.log_step, logging.info)
 
   # caption retrieval
@@ -198,8 +207,29 @@ def validate(opt, val_loader, model):
     img_embs, cap_embs, measure=opt.measure)
   logging.info("Text to image: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (r1i, r5i, r10i, medri, meanr))
+
+  # caption retrieval
+  (seq_r1, seq_r5, seq_r10, seq_medr, seq_meanr) = i2t(img_seq_embs, cap_seq_embs, measure=opt.measure)
+  logging.info("seq_Image to seq_text: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (seq_r1, seq_r5, seq_r10, seq_medr, seq_meanr))
+  # image retrieval
+  (seq_r1i, seq_r5i, seq_r10i, seq_medri, seq_meanr) = t2i(
+    img_seq_embs, cap_seq_embs, measure=opt.measure)
+  logging.info("seq_Text to seq_image: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (seq_r1i, seq_r5i, seq_r10i, seq_medri, seq_meanr))
+ 
+  # caption retrieval
+  (whole_r1, whole_r5, whole_r10, whole_medr, whole_meanr) = i2t(img_whole_embs, cap_whole_embs, measure=opt.measure)
+  logging.info("whole_Image to whole_text: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (whole_r1, whole_r5, whole_r10, whole_medr, whole_meanr))
+  # image retrieval
+  (whole_r1i, whole_r5i, whole_r10i, whole_medri, whole_meanr) = t2i(
+    img_whole_embs, cap_whole_embs, measure=opt.measure)
+  logging.info("whole_Text to whole_image: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (whole_r1i, whole_r5i, whole_r10i, whole_medri, whole_meanr))
+ 
   # sum of recalls to be used for early stopping
-  currscore = r1 + r5 + r10 + r1i + r5i + r10i
+  currscore = r1 + r5 + r10 + r1i + r5i + r10i + seq_r1 + seq_r5 + seq_r10 + seq_r1i + seq_r5i + seq_r10i + whole_r1 + whole_r5 + whole_r10 + whole_r1i + whole_r5i + whole_r10i 
 
   # record metrics in tensorboard
   tb_logger.log_value('r1', r1, step=model.Eiters)
@@ -213,6 +243,30 @@ def validate(opt, val_loader, model):
   tb_logger.log_value('medri', medri, step=model.Eiters)
   tb_logger.log_value('meanr', meanr, step=model.Eiters)
   tb_logger.log_value('rsum', currscore, step=model.Eiters)
+
+  tb_logger.log_value('seq_r1', seq_r1, step=model.Eiters)
+  tb_logger.log_value('seq_r5', seq_r5, step=model.Eiters)
+  tb_logger.log_value('seq_r10', seq_r10, step=model.Eiters)
+  tb_logger.log_value('seq_medr', seq_medr, step=model.Eiters)
+  tb_logger.log_value('seq_meanr', seq_meanr, step=model.Eiters)
+  tb_logger.log_value('seq_r1i', seq_r1i, step=model.Eiters)
+  tb_logger.log_value('seq_r5i', seq_r5i, step=model.Eiters)
+  tb_logger.log_value('seq_r10i', seq_r10i, step=model.Eiters)
+  tb_logger.log_value('seq_medri', seq_medri, step=model.Eiters)
+  tb_logger.log_value('seq_meanr', seq_meanr, step=model.Eiters)
+
+  tb_logger.log_value('whole_r1', whole_r1, step=model.Eiters)
+  tb_logger.log_value('whole_r5', whole_r5, step=model.Eiters)
+  tb_logger.log_value('whole_r10', whole_r10, step=model.Eiters)
+  tb_logger.log_value('whole_medr', whole_medr, step=model.Eiters)
+  tb_logger.log_value('whole_meanr', whole_meanr, step=model.Eiters)
+  tb_logger.log_value('whole_r1i', whole_r1i, step=model.Eiters)
+  tb_logger.log_value('whole_r5i', whole_r5i, step=model.Eiters)
+  tb_logger.log_value('whole_r10i', whole_r10i, step=model.Eiters)
+  tb_logger.log_value('whole_medri', whole_medri, step=model.Eiters)
+  tb_logger.log_value('whole_meanr', whole_meanr, step=model.Eiters)
+
+
 
   return currscore
 

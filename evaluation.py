@@ -83,29 +83,30 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   end = time.time()
 
   # numpy array to keep all the embeddings
-  img_embs = None
-  cap_embs = None
-  batch_id = 0
-  for i, (images, captions, lengths_img, lengths_cap, ind, seg_num) in enumerate(data_loader):
+  img_embs = []
+  cap_embs = []
+  img_seq_embs = []
+  cap_seq_embs = []
+  img_whole_embs = []
+  cap_whole_embs = []
+  for i, (images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num) in enumerate(data_loader):
     # make sure val logger is used
     model.logger = val_logger
 
     # compute the embeddings
-    with torch.no_grad():
-      img_emb, cap_emb = model.structure_emb(images, captions, lengths_img, lengths_cap, ind, seg_num)
+    img_seq_emb, cap_seq_emb, img_emb, cap_emb, img_whole_emb, cap_whole_emb = model.structure_emb(images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num)
 
     # initialize the numpy arrays given the size of the embeddings
-    if img_embs is None:
-      img_embs = np.zeros((len(data_loader.dataset), img_emb.size(1)))
-      cap_embs = np.zeros((len(data_loader.dataset), cap_emb.size(1)))
 
-    batch_size = img_emb.size(0)
-    img_embs[batch_id*batch_size:(batch_id+1)*batch_size] = img_emb.data.cpu().numpy().copy()
-    cap_embs[batch_id*batch_size:(batch_id+1)*batch_size] = cap_emb.data.cpu().numpy().copy()
-    batch_id += 1 # batch id + 1
+    img_embs.append(img_emb.data.cpu())
+    cap_embs.append(cap_emb.data.cpu())
+    img_seq_embs.append(img_seq_emb.data.cpu())
+    cap_seq_embs.append(cap_seq_emb.data.cpu())
+    img_whole_embs.append(img_whole_emb.data.cpu())
+    cap_whole_embs.append(cap_whole_emb.data.cpu())
 
     # measure accuracy and record loss
-    model.forward_loss(img_emb, cap_emb)
+    model.forward_loss(img_emb, cap_emb, 'test')
 
     # measure elapsed time
     batch_time.update(time.time() - end)
@@ -120,7 +121,21 @@ def encode_data(model, data_loader, log_step=10, logging=print):
             e_log=str(model.logger)))
     del images, captions
 
-  return img_embs, cap_embs
+  img_seq_embs = torch.cat(img_seq_embs, 0)
+  cap_seq_embs = torch.cat(cap_seq_embs, 0)
+  img_seq_embs = img_seq_embs.numpy()
+  cap_seq_embs = cap_seq_embs.numpy()
+ 
+  img_whole_embs = torch.cat(img_whole_embs, 0)
+  cap_whole_embs = torch.cat(cap_whole_embs, 0)
+  img_whole_embs = img_whole_embs.numpy()
+  cap_whole_embs = cap_whole_embs.numpy()
+ 
+  img_embs = torch.cat(img_embs, 0)
+  cap_embs = torch.cat(cap_embs, 0)
+  img_embs = img_embs.numpy()
+  cap_embs = cap_embs.numpy()
+  return img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs
 
 
 def i2t(images, captions, npts=None, measure='cosine', return_ranks=False):

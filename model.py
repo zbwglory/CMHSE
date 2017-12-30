@@ -13,26 +13,27 @@ from IPython import embed
 
 from layers import *
 
-def EncoderImage(data_name, img_dim, embed_size, finetune=False,
-         cnn_type='vgg19', no_imgnorm=False, rnn_type='maxout', bidirectional=False):
+def EncoderImage(data_name, img_dim, embed_size, finetune=False, dropout=0.5, 
+        no_imgnorm=False, rnn_type='maxout', bidirectional=False):
   """A wrapper to image encoders. Chooses between an encoder that uses
   precomputed image features, `EncoderImagePrecomp`, or an encoder that
   computes image features on the fly `EncoderImageFull`.
   """
   if data_name.endswith('_precomp'):
-    img_enc = EncoderImagePrecomp(img_dim, embed_size, no_imgnorm=no_imgnorm, bidirectional=bidirectional, rnn_type=rnn_type)
+    img_enc = EncoderImagePrecomp(img_dim, embed_size, dropout=dropout, no_imgnorm=no_imgnorm, bidirectional=bidirectional, rnn_type=rnn_type)
 
   return img_enc
 
 class EncoderSequence(nn.Module):
-  def __init__(self, img_dim, embed_size, dropout=0.5, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
+  def __init__(self, img_dim, embed_size, dropout=0, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
     super(EncoderSequence, self).__init__()
     self.embed_size = embed_size
     self.no_imgnorm = no_imgnorm
     self.bidirectional = bidirectional
 
     num_layers = 1
-    self.dropout = nn.Dropout(dropout)
+    if dropout > 0:
+        self.dropout = nn.Dropout(dropout)
     if rnn_type == 'attention':
       self.rnn = Attention(img_dim, embed_size, rnn_bidirectional=bidirectional)
     elif rnn_type == 'seq2seq':
@@ -46,7 +47,7 @@ class EncoderSequence(nn.Module):
 
   def forward(self, x, lengths):
     """Extract image feature vectors."""
-    # img_emb = self.dropout(x)
+    #img_emb = self.dropout(x)
     # outputs = self.rnn(img_emb, lengths)
     outputs = self.rnn(x, lengths)
 
@@ -55,14 +56,16 @@ class EncoderSequence(nn.Module):
     # return F.normalize(self.mlp(outputs))
 
 class EncoderImagePrecomp(nn.Module):
-  def __init__(self, img_dim, embed_size, dropout=0.5, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
+  def __init__(self, img_dim, embed_size, dropout=0, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
     super(EncoderImagePrecomp, self).__init__()
     self.embed_size = embed_size
     self.no_imgnorm = no_imgnorm
     self.bidirectional = bidirectional
+    self.dropout = dropout
 
     num_layers = 1
-    self.dropout = nn.Dropout(dropout)
+    if dropout > 0:
+        self.dropout = nn.Dropout(dropout)
     if rnn_type == 'attention':
       self.rnn = Attention(img_dim, embed_size, rnn_bidirectional=bidirectional)
     elif rnn_type == 'seq2seq':
@@ -76,7 +79,10 @@ class EncoderImagePrecomp(nn.Module):
 
   def forward(self, x, lengths):
     """Extract image feature vectors."""
-    # img_emb = self.dropout(x)
+    if self.dropout > 0:
+        x = self.dropout(x)
+    else:
+        pass
     # outputs = self.rnn(img_emb, lengths)
     outputs = self.rnn(x, lengths)
 
@@ -85,16 +91,18 @@ class EncoderImagePrecomp(nn.Module):
     # return F.normalize(self.mlp(outputs))
 
 class EncoderText(nn.Module):
-  def __init__(self, vocab_size, word_dim, embed_size, num_layers, dropout=0.5, bidirectional=False, rnn_type='maxout'):
+  def __init__(self, vocab_size, word_dim, embed_size, num_layers, dropout=0, bidirectional=False, rnn_type='maxout'):
     super(EncoderText, self).__init__()
     self.embed_size = embed_size
     self.bidirectional = bidirectional
+    self.dropout = dropout
 
     # word embedding
     self.embed   = nn.Embedding(vocab_size, word_dim)
 
     # caption embedding
-    self.dropout = nn.Dropout(dropout)
+    if dropout > 0:
+        self.dropout = nn.Dropout(dropout)
     if rnn_type == 'attention':
       self.rnn = Attention(word_dim, embed_size, rnn_bidirectional=bidirectional)
     elif rnn_type == 'seq2seq':
@@ -115,8 +123,10 @@ class EncoderText(nn.Module):
     """Handles variable size captions
     """
     # Embed word ids to vectors
-    # cap_emb = self.dropout(self.embed(x))
-    cap_emb = self.embed(x)
+    if self.dropout > 0:
+        cap_emb = self.dropout(self.embed(x))
+    else:
+        cap_emb = self.embed(x)
     outputs = self.rnn(cap_emb, lengths)
 
     # normalization in the joint embedding space
@@ -182,13 +192,13 @@ class VSE(object):
     # tutorials/09 - Image Captioning
     # Build Models
     self.grad_clip = opt.grad_clip
-    self.img_enc = EncoderImage(opt.data_name, opt.img_dim, opt.embed_size,
+    self.img_enc = EncoderImage(opt.data_name, opt.img_dim, opt.img_first_size, dropout=opt.img_first_dropout,
                   no_imgnorm=opt.no_imgnorm, rnn_type=opt.rnn_type)
-    self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim,
-                   opt.embed_size, opt.num_layers, rnn_type=opt.rnn_type)
-    self.img_seq_enc = EncoderSequence(opt.embed_size, opt.embed_size,
+    self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim, opt.cap_first_size, opt.num_layers, dropout=opt.cap_first_dropout,
+            rnn_type=opt.rnn_type)
+    self.img_seq_enc = EncoderSequence(opt.img_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
-    self.txt_seq_enc = EncoderSequence(opt.embed_size, opt.embed_size,
+    self.txt_seq_enc = EncoderSequence(opt.cap_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
     if torch.cuda.is_available():
       self.img_enc.cuda()
@@ -252,8 +262,9 @@ class VSE(object):
     cap_emb = self.txt_enc(captions, Variable(lengths_cap))
     return img_emb, cap_emb
 
-  def structure_emb(self, images, captions, lengths_img, lengths_cap, ind, seg_num):
+  def structure_emb(self, images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num):
     img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
+    vid_whole_emb, cap_whole_emb = self.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
     img_reshape_emb = Variable(torch.zeros(len(ind), max(seg_num), img_emb.shape[1])).cuda()
     cap_reshape_emb = Variable(torch.zeros(len(ind), max(seg_num), cap_emb.shape[1])).cuda()
 
@@ -266,16 +277,17 @@ class VSE(object):
     img_seq_emb = self.img_seq_enc(img_reshape_emb, Variable(torch.Tensor(seg_num)))
     cap_seq_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(seg_num)))
 
-    return img_seq_emb, cap_seq_emb
 
-  def forward_loss(self, img_emb, cap_emb, **kwargs):
+    return img_seq_emb, cap_seq_emb, img_emb, cap_emb, vid_whole_emb, cap_whole_emb
+
+  def forward_loss(self, img_emb, cap_emb, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
     """
     loss = self.criterion(img_emb, cap_emb)
-    self.logger.update('Le', loss.data[0], img_emb.size(0))
+    self.logger.update('Le'+name, loss.data[0], img_emb.size(0))
     return loss
 
-  def train_emb(self, images, captions, lengths_img, lengths_cap, ind, seg_num, *args):
+  def train_emb(self, images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num, *args):
     """One training step given images and captions.
     """
     self.Eiters += 1
@@ -283,11 +295,14 @@ class VSE(object):
     self.logger.update('lr', self.optimizer.param_groups[0]['lr'])
 
     # compute the embeddings
-    img_emb, cap_emb = self.structure_emb(images, captions, lengths_img, lengths_cap, ind, seg_num)
+    img_seq_emb, cap_seq_emb, img_emb, cap_emb, vid_whole_emb, cap_whole_emb = self.structure_emb(images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num)
 
     # measure accuracy and record loss
     self.optimizer.zero_grad()
-    loss = self.forward_loss(img_emb, cap_emb)
+    loss_1 = self.forward_loss(img_seq_emb, cap_seq_emb, 'seq')
+    loss_2 = self.forward_loss(img_emb, cap_emb, 'vid')
+    loss_3 = self.forward_loss(vid_whole_emb, cap_whole_emb, 'whole')
+    loss = loss_1 + loss_2 + loss_3
 
     # compute gradient and do SGD step
     loss.backward()
