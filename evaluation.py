@@ -83,12 +83,9 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   end = time.time()
 
   # numpy array to keep all the embeddings
-  img_embs = []
-  cap_embs = []
-  img_seq_embs = []
-  cap_seq_embs = []
-  img_whole_embs = []
-  cap_whole_embs = []
+  img_embs, cap_embs = [], []
+  img_seq_embs, cap_seq_embs = [], []
+  img_whole_embs, cap_whole_embs = [], []
   for i, (images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num) in enumerate(data_loader):
     # make sure val logger is used
     model.logger = val_logger
@@ -97,13 +94,12 @@ def encode_data(model, data_loader, log_step=10, logging=print):
     img_seq_emb, cap_seq_emb, img_emb, cap_emb, img_whole_emb, cap_whole_emb = model.structure_emb(images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num)
 
     # initialize the numpy arrays given the size of the embeddings
-
     img_embs.append(img_emb.data.cpu())
     cap_embs.append(cap_emb.data.cpu())
     img_seq_embs.append(img_seq_emb.data.cpu())
     cap_seq_embs.append(cap_seq_emb.data.cpu())
     img_whole_embs.append(img_whole_emb.data.cpu())
-    cap_whole_embs.append(cap_whole_emb.data.cpu())
+    cap_whole_embs.append(cap_whole_embs.data.cpu())
 
     # measure accuracy and record loss
     model.forward_loss(img_emb, cap_emb, 'test')
@@ -125,18 +121,17 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   cap_seq_embs = torch.cat(cap_seq_embs, 0)
   img_seq_embs = img_seq_embs.numpy()
   cap_seq_embs = cap_seq_embs.numpy()
- 
+
   img_whole_embs = torch.cat(img_whole_embs, 0)
   cap_whole_embs = torch.cat(cap_whole_embs, 0)
   img_whole_embs = img_whole_embs.numpy()
   cap_whole_embs = cap_whole_embs.numpy()
- 
+
   img_embs = torch.cat(img_embs, 0)
   cap_embs = torch.cat(cap_embs, 0)
   img_embs = img_embs.numpy()
   cap_embs = cap_embs.numpy()
   return img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs
-
 
 def i2t(images, captions, npts=None, measure='cosine', return_ranks=False):
   npts = images.shape[0]
@@ -185,4 +180,43 @@ def t2i(images, captions, npts=None, measure='cosine', return_ranks=False):
   else:
     return (r1, r5, r10, medr, meanr)
 
+def encode_eval_data(model, data_loader, log_step=10, logging=print, num_offsets=3):
+  """Encode all images and captions loadable by `data_loader`
+  """
+  batch_time = AverageMeter()
+  val_logger = LogCollector()
 
+  # switch to evaluate mode
+  model.val_start()
+
+  end = time.time()
+
+  # numpy array to keep all the embeddings
+  img_seq_embs = [ [] for _ in xrange(num_offsets)]
+  cap_seq_embs = [ [] for _ in xrange(num_offsets)]
+  for i, (images, captions, _, _, lengths_img, lengths_cap, _, _, ind, seg_nums) in enumerate(data_loader):
+    # make sure val logger is used
+    model.logger = val_logger
+
+    # compute the embeddings
+    for _offset in xrange(num_offsets):
+      img_seq_emb, cap_seq_emb = model.test_emb(images, captions, lengths_img, lengths_cap, ind, seg_nums, offset=_offset)
+
+      img_seq_embs[_offset].append(img_seq_emb.data.cpu())
+      cap_seq_embs[_offset].append(cap_seq_emb.data.cpu())
+
+    # measure elapsed time
+    batch_time.update(time.time() - end)
+    end = time.time()
+
+    if i % log_step == 0:
+      logging('Test: [{0}/{1}]\t'
+          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+          .format(
+            i, len(data_loader), batch_time=batch_time))
+    del images, captions
+
+  img_seq_embs = [ torch.cat(img_seq_embs[_offset], 0).numpy() for _offset in xrange(num_offsets) ]
+  cap_seq_embs = [ torch.cat(cap_seq_embs[_offset], 0).numpy() for _offset in xrange(num_offsets) ]
+
+  return img_seq_embs, cap_seq_embs

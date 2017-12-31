@@ -53,7 +53,6 @@ class EncoderSequence(nn.Module):
 
     # normalization in the joint embedding space
     return F.normalize(outputs)
-    # return F.normalize(self.mlp(outputs))
 
 class EncoderImagePrecomp(nn.Module):
   def __init__(self, img_dim, embed_size, dropout=0, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
@@ -222,14 +221,15 @@ class VSE(object):
     self.Eiters = 0
 
   def state_dict(self):
-    state_dict = [self.img_enc.state_dict(), self.txt_enc.state_dict()]
+    state_dict = [self.img_enc.state_dict(), self.txt_enc.state_dict(), \
+                  self.img_seq_enc.state_dict(), self.txt_seq_enc.state_dict() ]
     return state_dict
 
   def load_state_dict(self, state_dict):
     self.img_enc.load_state_dict(state_dict[0])
     self.txt_enc.load_state_dict(state_dict[1])
-    self.img_seq_enc.load_state_dict(state_dict[0])
-    self.txt_seq_enc.load_state_dict(state_dict[0])
+    self.img_seq_enc.load_state_dict(state_dict[2])
+    self.txt_seq_enc.load_state_dict(state_dict[3])
 
   def train_start(self):
     """switch to train mode
@@ -310,3 +310,19 @@ class VSE(object):
       clip_grad_norm(self.params, self.grad_clip)
     self.optimizer.step()
 
+  def test_emb(self, images, captions, lengths_img, lengths_cap, ind, seg_nums, offset=0):
+    img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
+    img_reshape_emb = Variable(torch.zeros(len(ind), max(seg_nums), img_emb.shape[1])).cuda()
+    cap_reshape_emb = Variable(torch.zeros(len(ind), max(seg_nums), cap_emb.shape[1])).cuda()
+
+    cur_displace = 0
+    for i, seg_num in enumerate(seg_nums):
+      seg_len = max(seg_num - offset, 1)
+      img_reshape_emb[i, 0:seg_len, :] = img_emb[cur_displace : cur_displace + seg_len, :]
+      cap_reshape_emb[i, 0:seg_num, :] = cap_emb[cur_displace : cur_displace + seg_num, :]
+      cur_displace = cur_displace + seg_num
+
+    img_seq_emb = self.img_seq_enc(img_reshape_emb, Variable(torch.Tensor(seg_nums)))
+    cap_seq_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(seg_nums)))
+
+    return img_seq_emb, cap_seq_emb

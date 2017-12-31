@@ -18,7 +18,7 @@ class PrecompDataset(data.Dataset):
 
   def __init__(self, data_path, data_split, vocab):
     self.vocab = vocab
-    loc = '/data2/bwzhang/anet_img/captions/'
+    loc = './data/activitynet/captions/'
 
     # Captions
     self.jsondict = jsonmod.load(open(loc+'{}.json'.format(data_split), 'r'))
@@ -27,7 +27,7 @@ class PrecompDataset(data.Dataset):
       self.ann_id[i] = keys
 
     # Image features
-    self.video_emb = h5py.File('/data2/sub_activitynet_v1-3.c3d.hdf5')
+    self.video_emb = h5py.File('./data/sub_activitynet_v1-3.c3d.hdf5')
 
     self.length = len(self.ann_id)
 
