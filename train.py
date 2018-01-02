@@ -8,7 +8,7 @@ import torch
 import data
 from vocab import Vocabulary  # NOQA
 from model import VSE
-from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data
+from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter, t2v, i2p
 
 import logging
 import tensorboard_logger as tb_logger
@@ -67,6 +67,8 @@ def main():
             help='Take the absolute value of embedding vectors.')
   parser.add_argument('--no_imgnorm', action='store_true',
             help='Do not normalize the image embeddings.')
+  parser.add_argument('--tune_seq', action='store_true',
+            help='Tune seq during training')
   parser.add_argument('--gpu_id', default=0, type=int,
             help='GPU to use.')
   parser.add_argument('--rnn_type', default='maxout', choices=['maxout', 'seq2seq', 'attention'],
@@ -79,9 +81,13 @@ def main():
             help='first img layer emb size')
   parser.add_argument('--cap_first_dropout', default=0, type=float,
             help='first cap layer emb size')
- 
+  parser.add_argument('--center_loss_weight', default=1, type=float,
+            help='weight of center loss')
+  parser.add_argument('--data_switch', default=0, type=int)
+  parser.add_argument('--center_loss', action='store_true')
+
+
   opt = parser.parse_args()
-  print(opt)
 
   torch.cuda.set_device(opt.gpu_id)
 
@@ -164,7 +170,7 @@ def train(opt, train_loader, model, epoch, val_loader):
     model.logger = train_logger
 
     # Update the model
-    model.train_emb(*train_data)
+    model.train_emb(opt, *train_data)
 
     # measure elapsed time
     batch_time.update(time.time() - end)
@@ -195,78 +201,60 @@ def train(opt, train_loader, model, epoch, val_loader):
 
 def validate(opt, val_loader, model):
   # compute the encoding for all the validation images and captions
-  img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs = encode_data(
+  img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs, seg_num_tot = encode_data(
     model, val_loader, opt.log_step, logging.info)
 
+  clip_para_rep, _, _ = i2p(img_embs, cap_embs, img_seq_embs, cap_seq_embs, seg_num_tot, measure=opt.measure)
+  cap_video_rep, _, _ = t2v(img_embs, cap_embs, img_seq_embs, cap_seq_embs, seg_num_tot, measure=opt.measure)
   # caption retrieval
-  (r1, r5, r10, medr, meanr) = i2t(img_embs, cap_embs, measure=opt.measure)
-  logging.info("Image to text: %.1f, %.1f, %.1f, %.1f, %.1f" %
-         (r1, r5, r10, medr, meanr))
+  vid_clip_rep, _, _ = i2t(img_embs, cap_embs, measure=opt.measure)
   # image retrieval
-  (r1i, r5i, r10i, medri, meanr) = t2i(
-    img_embs, cap_embs, measure=opt.measure)
-  logging.info("Text to image: %.1f, %.1f, %.1f, %.1f, %.1f" %
-         (r1i, r5i, r10i, medri, meanr))
+  cap_clip_rep, _, _ = t2i(img_embs, cap_embs, measure=opt.measure)
 
   # caption retrieval
-  (seq_r1, seq_r5, seq_r10, seq_medr, seq_meanr) = i2t(img_seq_embs, cap_seq_embs, measure=opt.measure)
-  logging.info("seq_Image to seq_text: %.1f, %.1f, %.1f, %.1f, %.1f" %
-         (seq_r1, seq_r5, seq_r10, seq_medr, seq_meanr))
+  vid_seq_rep, _, _ = i2t(img_seq_embs, cap_seq_embs, measure=opt.measure)
   # image retrieval
-  (seq_r1i, seq_r5i, seq_r10i, seq_medri, seq_meanr) = t2i(
-    img_seq_embs, cap_seq_embs, measure=opt.measure)
-  logging.info("seq_Text to seq_image: %.1f, %.1f, %.1f, %.1f, %.1f" %
-         (seq_r1i, seq_r5i, seq_r10i, seq_medri, seq_meanr))
+  cap_seq_rep, _, _ = t2i(img_seq_embs, cap_seq_embs, measure=opt.measure)
  
   # caption retrieval
-  (whole_r1, whole_r5, whole_r10, whole_medr, whole_meanr) = i2t(img_whole_embs, cap_whole_embs, measure=opt.measure)
-  logging.info("whole_Image to whole_text: %.1f, %.1f, %.1f, %.1f, %.1f" %
-         (whole_r1, whole_r5, whole_r10, whole_medr, whole_meanr))
+  vid_whole_rep, _, _ = i2t(img_whole_embs, cap_whole_embs, measure=opt.measure)
   # image retrieval
-  (whole_r1i, whole_r5i, whole_r10i, whole_medri, whole_meanr) = t2i(
-    img_whole_embs, cap_whole_embs, measure=opt.measure)
-  logging.info("whole_Text to whole_image: %.1f, %.1f, %.1f, %.1f, %.1f" %
-         (whole_r1i, whole_r5i, whole_r10i, whole_medri, whole_meanr))
+  cap_whole_rep, _, _ = t2i(img_whole_embs, cap_whole_embs, measure=opt.measure)
  
   # sum of recalls to be used for early stopping
-  currscore = r1 + r5 + r10 + r1i + r5i + r10i + seq_r1 + seq_r5 + seq_r10 + seq_r1i + seq_r5i + seq_r10i + whole_r1 + whole_r5 + whole_r10 + whole_r1i + whole_r5i + whole_r10i 
+  #currscore = r1 + r5 + r10 + r1i + r5i + r10i + seq_r1 + seq_r5 + seq_r10 + seq_r1i + seq_r5i + seq_r10i + whole_r1 + whole_r5 + whole_r10 + whole_r1i + whole_r5i + whole_r10i 
+  currscore = vid_clip_rep['sum'] + cap_clip_rep['sum'] + vid_seq_rep['sum'] + cap_seq_rep['sum'] + vid_whole_rep['sum'] + cap_whole_rep['sum'] 
+
+  logging.info("Image to text: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (vid_clip_rep['r1'], vid_clip_rep['r5'], vid_clip_rep['r10'], vid_clip_rep['medr'], vid_clip_rep['meanr']))
+  logging.info("Text to image: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (cap_clip_rep['r1'], cap_clip_rep['r5'], cap_clip_rep['r10'], cap_clip_rep['medr'], cap_clip_rep['meanr']))
+  logging.info("seq_Image to seq_text: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (vid_seq_rep['r1'], vid_seq_rep['r5'], vid_seq_rep['r10'], vid_seq_rep['medr'], vid_seq_rep['meanr']))
+  logging.info("seq_Text to seq_image: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (cap_seq_rep['r1'], cap_seq_rep['r5'], cap_seq_rep['r10'], cap_seq_rep['medr'], cap_seq_rep['meanr']))
+  logging.info("whole_Image to whole_text: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (vid_whole_rep['r1'], vid_whole_rep['r5'], vid_whole_rep['r10'], vid_whole_rep['medr'], vid_whole_rep['meanr']))
+  logging.info("whole_Text to whole_image: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (cap_whole_rep['r1'], cap_whole_rep['r5'], cap_whole_rep['r10'], cap_whole_rep['medr'], cap_whole_rep['meanr']))
+  logging.info("Text to seq_image: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (cap_video_rep['r1'], cap_video_rep['r5'], cap_video_rep['r10'], cap_video_rep['medr'], cap_video_rep['meanr']))
+  logging.info("Image to seq_text: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (clip_para_rep['r1'], clip_para_rep['r5'], clip_para_rep['r10'], clip_para_rep['medr'], clip_para_rep['meanr']))
+
+
 
   # record metrics in tensorboard
-  tb_logger.log_value('r1', r1, step=model.Eiters)
-  tb_logger.log_value('r5', r5, step=model.Eiters)
-  tb_logger.log_value('r10', r10, step=model.Eiters)
-  tb_logger.log_value('medr', medr, step=model.Eiters)
-  tb_logger.log_value('meanr', meanr, step=model.Eiters)
-  tb_logger.log_value('r1i', r1i, step=model.Eiters)
-  tb_logger.log_value('r5i', r5i, step=model.Eiters)
-  tb_logger.log_value('r10i', r10i, step=model.Eiters)
-  tb_logger.log_value('medri', medri, step=model.Eiters)
-  tb_logger.log_value('meanr', meanr, step=model.Eiters)
+  LogReporter(tb_logger, vid_clip_rep, model.Eiters, 'clip')
+  LogReporter(tb_logger, cap_clip_rep, model.Eiters, 'clipi')
+  LogReporter(tb_logger, vid_seq_rep, model.Eiters, 'seq')
+  LogReporter(tb_logger, cap_seq_rep, model.Eiters, 'seqi')
+  LogReporter(tb_logger, vid_whole_rep, model.Eiters, 'whole')
+  LogReporter(tb_logger, cap_whole_rep, model.Eiters, 'wholei')
+  LogReporter(tb_logger, clip_para_rep, model.Eiters, 'clip_para')
+  LogReporter(tb_logger, cap_whole_rep, model.Eiters, 'cap_whole')
+  
   tb_logger.log_value('rsum', currscore, step=model.Eiters)
-
-  tb_logger.log_value('seq_r1', seq_r1, step=model.Eiters)
-  tb_logger.log_value('seq_r5', seq_r5, step=model.Eiters)
-  tb_logger.log_value('seq_r10', seq_r10, step=model.Eiters)
-  tb_logger.log_value('seq_medr', seq_medr, step=model.Eiters)
-  tb_logger.log_value('seq_meanr', seq_meanr, step=model.Eiters)
-  tb_logger.log_value('seq_r1i', seq_r1i, step=model.Eiters)
-  tb_logger.log_value('seq_r5i', seq_r5i, step=model.Eiters)
-  tb_logger.log_value('seq_r10i', seq_r10i, step=model.Eiters)
-  tb_logger.log_value('seq_medri', seq_medri, step=model.Eiters)
-  tb_logger.log_value('seq_meanr', seq_meanr, step=model.Eiters)
-
-  tb_logger.log_value('whole_r1', whole_r1, step=model.Eiters)
-  tb_logger.log_value('whole_r5', whole_r5, step=model.Eiters)
-  tb_logger.log_value('whole_r10', whole_r10, step=model.Eiters)
-  tb_logger.log_value('whole_medr', whole_medr, step=model.Eiters)
-  tb_logger.log_value('whole_meanr', whole_meanr, step=model.Eiters)
-  tb_logger.log_value('whole_r1i', whole_r1i, step=model.Eiters)
-  tb_logger.log_value('whole_r5i', whole_r5i, step=model.Eiters)
-  tb_logger.log_value('whole_r10i', whole_r10i, step=model.Eiters)
-  tb_logger.log_value('whole_medri', whole_medri, step=model.Eiters)
-  tb_logger.log_value('whole_meanr', whole_meanr, step=model.Eiters)
-
-
 
   return currscore
 

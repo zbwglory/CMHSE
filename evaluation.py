@@ -70,6 +70,12 @@ class LogCollector(object):
     for k, v in self.meters.iteritems():
       tb_logger.log_value(prefix + k, v.val, step=step)
 
+def LogReporter(tb_logger, result, epoch, name):
+    for key in result:
+        tb_logger.log_value(name+key, result[key], step=epoch)
+    return
+
+    
 
 def encode_data(model, data_loader, log_step=10, logging=print):
   """Encode all images and captions loadable by `data_loader`
@@ -86,12 +92,15 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   img_embs, cap_embs = [], []
   img_seq_embs, cap_seq_embs = [], []
   img_whole_embs, cap_whole_embs = [], []
+  seg_num_tot = []
   for i, (images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num) in enumerate(data_loader):
     # make sure val logger is used
     model.logger = val_logger
 
     # compute the embeddings
-    img_seq_emb, cap_seq_emb, img_emb, cap_emb, img_whole_emb, cap_whole_emb = model.structure_emb(images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num)
+    img_emb, cap_emb = model.forward_emb(images, captions, lengths_img, lengths_cap)
+    img_whole_emb, cap_whole_emb = model.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
+    img_seq_emb, cap_seq_emb = model.structure_emb(img_emb, cap_emb, seg_num)
 
     # initialize the numpy arrays given the size of the embeddings
     img_embs.append(img_emb.data.cpu())
@@ -99,7 +108,9 @@ def encode_data(model, data_loader, log_step=10, logging=print):
     img_seq_embs.append(img_seq_emb.data.cpu())
     cap_seq_embs.append(cap_seq_emb.data.cpu())
     img_whole_embs.append(img_whole_emb.data.cpu())
-    cap_whole_embs.append(cap_whole_embs.data.cpu())
+    cap_whole_embs.append(cap_whole_emb.data.cpu())
+    seg_num_tot.extend(seg_num)
+
 
     # measure accuracy and record loss
     model.forward_loss(img_emb, cap_emb, 'test')
@@ -131,9 +142,9 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   cap_embs = torch.cat(cap_embs, 0)
   img_embs = img_embs.numpy()
   cap_embs = cap_embs.numpy()
-  return img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs
+  return img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs, seg_num_tot
 
-def i2t(images, captions, npts=None, measure='cosine', return_ranks=False):
+def i2t(images, captions, npts=None, measure='cosine'):
   npts = images.shape[0]
   ranks = numpy.zeros(npts)
   top1 = numpy.zeros(npts)
@@ -151,13 +162,17 @@ def i2t(images, captions, npts=None, measure='cosine', return_ranks=False):
   r10 = 100.0 * len(numpy.where(ranks < 50)[0]) / len(ranks)
   medr = numpy.floor(numpy.median(ranks)) + 1
   meanr = ranks.mean() + 1
-  if return_ranks:
-    return (r1, r5, r10, medr, meanr), (ranks, top1)
-  else:
-    return (r1, r5, r10, medr, meanr)
+  report_dict = dict()
+  report_dict['r1'] = r1
+  report_dict['r5'] = r5
+  report_dict['r10'] = r10
+  report_dict['medr'] = medr
+  report_dict['meanr'] = meanr
+  report_dict['sum'] = r1+r5+r10
+  return report_dict, top1, ranks
 
 
-def t2i(images, captions, npts=None, measure='cosine', return_ranks=False):
+def t2i(images, captions, npts=None, measure='cosine'):
   npts = captions.shape[0]
   ranks = numpy.zeros(npts)
   top1 = numpy.zeros(npts)
@@ -175,10 +190,83 @@ def t2i(images, captions, npts=None, measure='cosine', return_ranks=False):
   r10 = 100.0 * len(numpy.where(ranks < 50)[0]) / len(ranks)
   medr = numpy.floor(numpy.median(ranks)) + 1
   meanr = ranks.mean() + 1
-  if return_ranks:
-    return (r1, r5, r10, medr, meanr), (ranks, top1)
-  else:
-    return (r1, r5, r10, medr, meanr)
+  report_dict = dict()
+  report_dict['r1'] = r1
+  report_dict['r5'] = r5
+  report_dict['r10'] = r10
+  report_dict['medr'] = medr
+  report_dict['meanr'] = meanr
+  report_dict['sum'] = r1+r5+r10
+  return report_dict, top1, ranks
+
+def t2v(images, captions, video, paragraph, seg_num, npts=None, measure='cosine'):
+  npts = captions.shape[0]
+  ranks = numpy.zeros(npts)
+  top1 = numpy.zeros(npts)
+  d_t2v = numpy.dot(captions, video.T)
+
+  seg_start = [sum(seg_num[0:i]) for i in range(len(seg_num))]
+  seg_start.append(npts)
+  aff_vind = np.zeros(npts)
+  for i in range(len(seg_start)-1):
+    aff_vind[seg_start[i]:seg_start[i+1]] = i
+  aff_vind.astype(int)
+
+  for index in range(npts):
+      inds = numpy.argsort(d_t2v[index])[::-1]
+      rank = numpy.where(inds == aff_vind[index])[0][0]
+      ranks[index] = rank
+      top1[index] = inds[0]
+
+  r1 = 100.0 * len(numpy.where(ranks < 1)[0]) / len(ranks)
+  r5 = 100.0 * len(numpy.where(ranks < 5)[0]) / len(ranks)
+  r10 = 100.0 * len(numpy.where(ranks < 50)[0]) / len(ranks)
+  medr = numpy.floor(numpy.median(ranks)) + 1
+  meanr = ranks.mean() + 1
+  report_dict = dict()
+  report_dict['r1'] = r1
+  report_dict['r5'] = r5
+  report_dict['r10'] = r10
+  report_dict['medr'] = medr
+  report_dict['meanr'] = meanr
+  report_dict['sum'] = r1+r5+r10
+  return report_dict, top1, ranks
+
+def i2p(images, captions, video, paragraph, seg_num, npts=None, measure='cosine'):
+  npts = captions.shape[0]
+  ranks = numpy.zeros(npts)
+  top1 = numpy.zeros(npts)
+  d_t2v = numpy.dot(images, paragraph.T)
+
+  seg_start = [sum(seg_num[0:i]) for i in range(len(seg_num))]
+  seg_start.append(npts)
+  aff_vind = np.zeros(npts)
+  for i in range(len(seg_start)-1):
+    aff_vind[seg_start[i]:seg_start[i+1]] = i
+  aff_vind.astype(int)
+
+  for index in range(npts):
+      inds = numpy.argsort(d_t2v[index])[::-1]
+      rank = numpy.where(inds == aff_vind[index])[0][0]
+      ranks[index] = rank
+      top1[index] = inds[0]
+
+  r1 = 100.0 * len(numpy.where(ranks < 1)[0]) / len(ranks)
+  r5 = 100.0 * len(numpy.where(ranks < 5)[0]) / len(ranks)
+  r10 = 100.0 * len(numpy.where(ranks < 50)[0]) / len(ranks)
+  medr = numpy.floor(numpy.median(ranks)) + 1
+  meanr = ranks.mean() + 1
+  report_dict = dict()
+  report_dict['r1'] = r1
+  report_dict['r5'] = r5
+  report_dict['r10'] = r10
+  report_dict['medr'] = medr
+  report_dict['meanr'] = meanr
+  report_dict['sum'] = r1+r5+r10
+  return report_dict, top1, ranks
+
+
+
 
 def encode_eval_data(model, data_loader, log_step=10, logging=print, num_offsets=3):
   """Encode all images and captions loadable by `data_loader`

@@ -16,9 +16,9 @@ class PrecompDataset(data.Dataset):
   Possible options: f8k, f30k, coco, 10crop
   """
 
-  def __init__(self, data_path, data_split, vocab):
+  def __init__(self, data_path, data_split, vocab, opt):
     self.vocab = vocab
-    loc = './data/activitynet/captions/'
+    loc = './data/captions/'
 
     # Captions
     self.jsondict = jsonmod.load(open(loc+'{}.json'.format(data_split), 'r'))
@@ -27,7 +27,7 @@ class PrecompDataset(data.Dataset):
       self.ann_id[i] = keys
 
     # Image features
-    self.video_emb = h5py.File('./data/sub_activitynet_v1-3.c3d.hdf5')
+    self.video_emb = h5py.File('./data/sub_activitynet_v1-3.c3d.hdf5-'+str(opt.data_switch))
 
     self.length = len(self.ann_id)
 
@@ -58,10 +58,6 @@ class PrecompDataset(data.Dataset):
         video_segment_c3d.append(c3d_cur_feat)
 
     lengths_vid = [len(vid) for vid in video_segment_c3d]
-#    video_segment_torch = torch.zeros(len(video_segment_c3d), max(lengths_vid), 500)
-#    for i, vid in enumerate(video_segment_c3d):
-#      end = lengths_vid[i]
-#      video_segment_torch[i, :end, :] = vid[:end, :]
 
     c3d_whole_feat = c3d_feat
     if c3d_whole_feat.shape[0] > max_frames:
@@ -80,17 +76,11 @@ class PrecompDataset(data.Dataset):
     for cap in captions:
         tokens_cap = nltk.tokenize.word_tokenize(cap.lower()) 
         caption = []
-#        caption.append(vocab('BOS'))
         caption.extend([vocab(token) for token in tokens_cap])
-#        caption.append(vocab('EOS'))
         target_cap = torch.Tensor(caption)
         caption_segment.append(target_cap)
 
     lengths_cap = [len(cap) for cap in caption_segment]
-#    caption_segment_torch = torch.zeros(len(caption_segment), max(lengths_cap)).long()
-#    for i, cap in enumerate(caption_segment):
-#      end = lengths_cap[i]
-#      caption_segment_torch[i, :end] = cap[:end]
 
     seg_num = len(video_segment_c3d)
 
@@ -158,7 +148,7 @@ def collate_fn(data_batch):
 def get_precomp_loader(data_path, data_split, vocab, opt, batch_size=100,
              shuffle=True, num_workers=2):
   """Returns torch.utils.data.DataLoader for custom coco dataset."""
-  dset = PrecompDataset(data_path, data_split, vocab)
+  dset = PrecompDataset(data_path, data_split, vocab, opt)
 
   data_loader = torch.utils.data.DataLoader(dataset=dset,
                         batch_size=batch_size,

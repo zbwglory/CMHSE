@@ -182,6 +182,58 @@ class ContrastiveLoss(nn.Module):
     return cost_s.sum() + cost_im.sum()
     # return cost_s.sum()
 
+
+class CenterLoss(nn.Module):
+  """
+  Compute contrastive loss
+  """
+
+  def __init__(self, margin=0, measure=False, max_violation=False, tune_center=False):
+    super(CenterLoss, self).__init__()
+    self.margin = margin
+    self.sim = cosine_sim
+    self.max_violation = max_violation
+    self.tune_center=tune_center
+
+  def forward_loss(self, im, vid, seg_num):
+    # compute image-sentence score matrix
+    if self.tune_center:
+        pass
+    else:
+        vid = vid.detach()
+    scores = self.sim(im, vid)
+
+    middle_block = Variable(torch.zeros(scores.shape[0])).cuda()
+
+    mask = torch.zeros(scores.shape)
+
+    for i in range(len(seg_num)):
+        cur_block = scores[sum(seg_num[0:i]):sum(seg_num[0:i+1]), i]
+        middle_block[sum(seg_num[0:i]):sum(seg_num[0:i+1])] = cur_block
+        mask[sum(seg_num[0:i]):sum(seg_num[0:i+1]), i] = 1
+    middle_block_reshape = middle_block.view(middle_block.shape[0],1).expand_as(scores)
+
+
+    # compare every diagonal score to scores in its column
+    # caption retrieval
+    cost_s = (self.margin + scores - middle_block_reshape).clamp(min=0)
+
+    # clear diagonals
+    mask = mask > .5
+    I = Variable(mask)
+    if torch.cuda.is_available():
+      I = I.cuda()
+    cost_s = cost_s.masked_fill_(I, 0)
+
+    # keep the maximum violating negative for each query
+    if self.max_violation:
+      cost_s = cost_s.max(1)[0]
+
+    return cost_s.sum()
+
+  def forward(self, im, vid, sent, para, seg_num):
+      return self.forward_loss(im, vid, seg_num) + self.forward_loss(sent, para, seg_num)
+
 class VSE(object):
   """
   rkiros/uvs model
@@ -210,6 +262,10 @@ class VSE(object):
     self.criterion = ContrastiveLoss(margin=opt.margin,
                      measure=opt.measure,
                      max_violation=opt.max_violation)
+    self.criterion_center = CenterLoss(margin=opt.margin,
+                     measure=opt.measure,
+                     max_violation=opt.max_violation, tune_center=opt.tune_seq)
+ 
     params = list(self.txt_enc.parameters())
     params += list(self.img_enc.parameters())
     params += list(self.img_seq_enc.parameters())
@@ -262,11 +318,9 @@ class VSE(object):
     cap_emb = self.txt_enc(captions, Variable(lengths_cap))
     return img_emb, cap_emb
 
-  def structure_emb(self, images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num):
-    img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
-    vid_whole_emb, cap_whole_emb = self.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
-    img_reshape_emb = Variable(torch.zeros(len(ind), max(seg_num), img_emb.shape[1])).cuda()
-    cap_reshape_emb = Variable(torch.zeros(len(ind), max(seg_num), cap_emb.shape[1])).cuda()
+  def structure_emb(self, img_emb, cap_emb, seg_num):
+    img_reshape_emb = Variable(torch.zeros(len(seg_num), max(seg_num), img_emb.shape[1])).cuda()
+    cap_reshape_emb = Variable(torch.zeros(len(seg_num), max(seg_num), cap_emb.shape[1])).cuda()
 
     cur_displace = 0
     for i, end_place in enumerate(seg_num):
@@ -278,7 +332,7 @@ class VSE(object):
     cap_seq_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(seg_num)))
 
 
-    return img_seq_emb, cap_seq_emb, img_emb, cap_emb, vid_whole_emb, cap_whole_emb
+    return img_seq_emb, cap_seq_emb
 
   def forward_loss(self, img_emb, cap_emb, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
@@ -287,7 +341,15 @@ class VSE(object):
     self.logger.update('Le'+name, loss.data[0], img_emb.size(0))
     return loss
 
-  def train_emb(self, images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num, *args):
+  def forward_center_loss(self, clip_emb, vid_emb, txt_emb, para_emb, seg_num, name, **kwargs):
+    """Compute the loss given pairs of image and caption embeddings
+    """
+    loss = self.criterion_center(clip_emb, vid_emb, txt_emb, para_emb, seg_num)
+    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
+    return loss
+
+
+  def train_emb(self, opts, images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num, *args):
     """One training step given images and captions.
     """
     self.Eiters += 1
@@ -295,14 +357,21 @@ class VSE(object):
     self.logger.update('lr', self.optimizer.param_groups[0]['lr'])
 
     # compute the embeddings
-    img_seq_emb, cap_seq_emb, img_emb, cap_emb, vid_whole_emb, cap_whole_emb = self.structure_emb(images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num)
+    img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
+    vid_whole_emb, cap_whole_emb = self.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
+    img_seq_emb, cap_seq_emb = self.structure_emb(img_emb, cap_emb, seg_num)
 
     # measure accuracy and record loss
     self.optimizer.zero_grad()
     loss_1 = self.forward_loss(img_seq_emb, cap_seq_emb, 'seq')
     loss_2 = self.forward_loss(img_emb, cap_emb, 'vid')
     loss_3 = self.forward_loss(vid_whole_emb, cap_whole_emb, 'whole')
-    loss = loss_1 + loss_2 + loss_3
+    if opts.center_loss:
+        loss_4 = self.forward_center_loss(img_emb, img_seq_emb, cap_emb, cap_seq_emb, seg_num, 'sim_loss')
+#    loss_5 = self.forward_center_loss(img_emb, cap_seq_emb, img_emb, cap_seq_emb, seg_num, 'cross_loss')
+        loss = loss_1 + loss_2 + loss_3 + opts.center_loss_weight * loss_4 # + loss_5
+    else:
+        loss = loss_1 + loss_2 + loss_3
 
     # compute gradient and do SGD step
     loss.backward()
@@ -312,8 +381,8 @@ class VSE(object):
 
   def test_emb(self, images, captions, lengths_img, lengths_cap, ind, seg_nums, offset=0):
     img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
-    img_reshape_emb = Variable(torch.zeros(len(ind), max(seg_nums), img_emb.shape[1])).cuda()
-    cap_reshape_emb = Variable(torch.zeros(len(ind), max(seg_nums), cap_emb.shape[1])).cuda()
+    img_reshape_emb = Variable(torch.zeros(len(seg_nums), max(seg_nums), img_emb.shape[1])).cuda()
+    cap_reshape_emb = Variable(torch.zeros(len(seg_nums), max(seg_nums), cap_emb.shape[1])).cuda()
 
     cur_displace = 0
     for i, seg_num in enumerate(seg_nums):
