@@ -88,6 +88,7 @@ def main():
 
 
   opt = parser.parse_args()
+  print (opt)
 
   torch.cuda.set_device(opt.gpu_id)
 
@@ -131,7 +132,7 @@ def main():
 
   # Train the Model
   best_rsum = 0
-  for epoch in range(opt.num_epochs):
+  for epoch in range(start_epoch, opt.num_epochs):
     adjust_learning_rate(opt, model.optimizer, epoch)
 
     # train for one epoch
