@@ -91,6 +91,7 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   # numpy array to keep all the embeddings
   img_embs, cap_embs = [], []
   img_seq_embs, cap_seq_embs = [], []
+  img_seq_recast_embs, cap_seq_recast_embs = [], []
   img_whole_embs, cap_whole_embs = [], []
   seg_num_tot = []
   for i, (images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num) in enumerate(data_loader):
@@ -101,12 +102,16 @@ def encode_data(model, data_loader, log_step=10, logging=print):
     img_emb, cap_emb = model.forward_emb(images, captions, lengths_img, lengths_cap)
     img_whole_emb, cap_whole_emb = model.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
     img_seq_emb, cap_seq_emb = model.structure_emb(img_emb, cap_emb, seg_num)
+    img_seq_emb_recast = model.fc_visual(img_seq_emb)
+    cap_seq_emb_recast = model.fc_language(cap_seq_emb)
 
     # initialize the numpy arrays given the size of the embeddings
     img_embs.append(img_emb.data.cpu())
     cap_embs.append(cap_emb.data.cpu())
     img_seq_embs.append(img_seq_emb.data.cpu())
     cap_seq_embs.append(cap_seq_emb.data.cpu())
+    img_seq_recast_embs.append(img_seq_emb_recast.data.cpu())
+    cap_seq_recast_embs.append(cap_seq_emb_recast.data.cpu())
     img_whole_embs.append(img_whole_emb.data.cpu())
     cap_whole_embs.append(cap_whole_emb.data.cpu())
     seg_num_tot.extend(seg_num)
@@ -133,6 +138,11 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   img_seq_embs = img_seq_embs.numpy()
   cap_seq_embs = cap_seq_embs.numpy()
 
+  img_seq_recast_embs = torch.cat(img_seq_recast_embs, 0)
+  cap_seq_recast_embs = torch.cat(cap_seq_recast_embs, 0)
+  img_seq_recast_embs = img_seq_recast_embs.numpy()
+  cap_seq_recast_embs = cap_seq_recast_embs.numpy()
+
   img_whole_embs = torch.cat(img_whole_embs, 0)
   cap_whole_embs = torch.cat(cap_whole_embs, 0)
   img_whole_embs = img_whole_embs.numpy()
@@ -142,7 +152,7 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   cap_embs = torch.cat(cap_embs, 0)
   img_embs = img_embs.numpy()
   cap_embs = cap_embs.numpy()
-  return img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs, seg_num_tot
+  return img_seq_embs, cap_seq_embs, img_seq_recast_embs, cap_seq_recast_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs, seg_num_tot
 
 def i2t(images, captions, npts=None, measure='cosine'):
   npts = images.shape[0]

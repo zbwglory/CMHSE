@@ -137,6 +137,58 @@ def cosine_sim(im, s):
   """
   return im.mm(s.t())
 
+class ContrastiveLoss_no_correspond(nn.Module):
+  """
+  Compute contrastive loss
+  """
+
+  def __init__(self, margin=0, measure=False, max_violation=False):
+    super(ContrastiveLoss_no_correspond, self).__init__()
+    self.margin = margin
+    if measure == 'order':
+      NotImplemented
+    else:
+      self.sim = cosine_sim
+
+    self.max_violation = max_violation
+
+  def forward(self, im, s, seg_num):
+    # compute image-sentence score matrix
+    scores = self.sim(im, s)
+    diagonal = scores.diag().view(im.size(0), 1)
+    d1 = diagonal.expand_as(scores)
+    d2 = diagonal.t().expand_as(scores)
+
+    # compare every diagonal score to scores in its column
+    # caption retrieval
+    cost_s = (self.margin + scores - d1).clamp(min=0)
+    # compare every diagonal score to scores in its row
+    # image retrieval
+    cost_im = (self.margin + scores - d2).clamp(min=0)
+
+    # clear diagonals
+    mask = torch.zeros(scores.shape)
+    for i in range(len(seg_num)):
+        mask[sum(seg_num[0:i]):sum(seg_num[0:i+1]), sum(seg_num[0:i]):sum(seg_num[0:i+1])] = 1
+ 
+    mask = mask > 0.5
+
+    I = Variable(mask)
+    if torch.cuda.is_available():
+      I = I.cuda()
+    cost_s = cost_s.masked_fill_(I, 0)
+    cost_im = cost_im.masked_fill_(I, 0)
+
+    # keep the maximum violating negative for each query
+    if self.max_violation:
+      cost_s = cost_s.max(1)[0]
+      cost_im = cost_im.max(0)[0]
+
+    return cost_s.sum() + cost_im.sum()
+    # return cost_s.sum()
+
+
+
 class ContrastiveLoss(nn.Module):
   """
   Compute contrastive loss
@@ -235,11 +287,12 @@ class CenterLoss(nn.Module):
       return self.forward_loss(im, vid, seg_num) + self.forward_loss(sent, para, seg_num)
 
 class FC(nn.Module):
-    def __init__(self, input_size, output_size):
+    def __init__(self, input_size, output_size, identity):
         super(FC, self).__init__()
         self.output_size = output_size
         self.fc = nn.Sequential(nn.Linear(input_size, output_size, bias=False), nn.ReLU(), nn.Linear(output_size, input_size, bias=False))
-        self.init_param()
+        if identity:
+            self.init_param()
 
     def init_param(self):
         self.fc[0].weight.data.copy_(torch.eye(self.output_size))
@@ -268,8 +321,8 @@ class VSE(object):
                   rnn_type=opt.rnn_type)
     self.txt_seq_enc = EncoderSequence(opt.cap_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
-    self.fc_visual = FC(opt.embed_size, opt.img_first_size)
-    self.fc_language = FC(opt.embed_size, opt.cap_first_size)
+    self.fc_visual = FC(opt.embed_size, opt.img_first_size, opt.identity)
+    self.fc_language = FC(opt.embed_size, opt.cap_first_size, opt.identity)
     if torch.cuda.is_available():
       self.img_enc.cuda()
       self.txt_enc.cuda()
@@ -283,6 +336,10 @@ class VSE(object):
     self.criterion = ContrastiveLoss(margin=opt.margin,
                      measure=opt.measure,
                      max_violation=opt.max_violation)
+    self.criterion_no_correspond = ContrastiveLoss_no_correspond(margin=opt.margin,
+                     measure=opt.measure,
+                     max_violation=opt.max_violation)
+ 
     self.criterion_center = CenterLoss(margin=opt.margin,
                      measure=opt.measure,
                      max_violation=opt.max_violation, tune_center=opt.tune_seq)
@@ -373,6 +430,14 @@ class VSE(object):
     self.logger.update('Le'+name, loss.data[0], img_emb.size(0))
     return loss
 
+  def forward_loss_no_correspond(self, img_emb, cap_emb, seg_num, name, **kwargs):
+    """Compute the loss given pairs of image and caption embeddings
+    """
+    loss = self.criterion_no_correspond(img_emb, cap_emb, seg_num)
+    self.logger.update('Le'+name, loss.data[0], img_emb.size(0))
+    return loss
+
+
 
   def forward_center_loss(self, clip_emb, vid_emb, txt_emb, para_emb, seg_num, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
@@ -391,7 +456,8 @@ class VSE(object):
 
     # compute the embeddings
     img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
-    img_seq_emb, cap_seq_emb = self.structure_emb(img_emb, cap_emb, seg_num)
+    if opts.seq_loss:
+        img_seq_emb, cap_seq_emb = self.structure_emb(img_emb, cap_emb, seg_num)
     if opts.whole_loss:
         vid_whole_emb, cap_whole_emb = self.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
     if opts.center_loss:
@@ -400,8 +466,14 @@ class VSE(object):
 
     # measure accuracy and record loss
     self.optimizer.zero_grad()
-    loss_1 = self.forward_loss(img_seq_emb, cap_seq_emb, 'seq')
-    loss_2 = self.forward_loss(img_emb, cap_emb, 'vid')
+    if opts.no_correspond:
+        loss_2 = self.forward_loss_no_correspond(img_emb, cap_emb, seg_num, 'vid')
+    else:
+        loss_2 = self.forward_loss(img_emb, cap_emb, 'vid')
+    if opts.seq_loss:
+        loss_1 = self.forward_loss(img_seq_emb, cap_seq_emb, 'seq')
+    else:
+        loss_1 = 0
     if opts.whole_loss:
         loss_3 = self.forward_loss(vid_whole_emb, cap_whole_emb, 'whole')
     else:

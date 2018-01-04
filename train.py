@@ -67,8 +67,6 @@ def main():
             help='Take the absolute value of embedding vectors.')
   parser.add_argument('--no_imgnorm', action='store_true',
             help='Do not normalize the image embeddings.')
-  parser.add_argument('--tune_seq', action='store_true',
-            help='Tune seq during training')
   parser.add_argument('--gpu_id', default=0, type=int,
             help='GPU to use.')
   parser.add_argument('--rnn_type', default='maxout', choices=['maxout', 'seq2seq', 'attention'],
@@ -83,10 +81,14 @@ def main():
             help='first cap layer emb size')
   parser.add_argument('--center_loss_weight', default=1, type=float,
             help='weight of center loss')
+
   parser.add_argument('--data_switch', default=0, type=int)
   parser.add_argument('--center_loss', action='store_true')
   parser.add_argument('--whole_loss', action='store_true')
-
+  parser.add_argument('--seq_loss', action='store_true')
+  parser.add_argument('--identity', action='store_true')
+  parser.add_argument('--tune_seq', action='store_true')
+  parser.add_argument('--no_correspond', action='store_true')
   parser.add_argument('--other_loss_weight', default=1, type=float)
 
   opt = parser.parse_args()
@@ -133,7 +135,7 @@ def main():
       print("=> no checkpoint found at '{}'".format(opt.resume))
 
   # Train the Model
-  validate(opt, val_loader, model)
+#  validate(opt, val_loader, model)
   best_rsum = 0
   for epoch in range(opt.num_epochs):
     adjust_learning_rate(opt, model.optimizer, epoch)
@@ -205,11 +207,11 @@ def train(opt, train_loader, model, epoch, val_loader):
 
 def validate(opt, val_loader, model):
   # compute the encoding for all the validation images and captions
-  img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs, seg_num_tot = encode_data(
+  img_seq_embs, cap_seq_embs, img_seq_embs_recast, cap_seq_embs_recast, img_embs, cap_embs, img_whole_embs, cap_whole_embs, seg_num_tot = encode_data(
     model, val_loader, opt.log_step, logging.info)
 
-  clip_para_rep, _, _ = i2p(img_embs, cap_embs, img_seq_embs, cap_seq_embs, seg_num_tot, measure=opt.measure)
-  cap_video_rep, _, _ = t2v(img_embs, cap_embs, img_seq_embs, cap_seq_embs, seg_num_tot, measure=opt.measure)
+  clip_para_rep, _, _ = i2p(img_embs, cap_embs, img_seq_embs_recast, cap_seq_embs_recast, seg_num_tot, measure=opt.measure)
+  cap_video_rep, _, _ = t2v(img_embs, cap_embs, img_seq_embs_recast, cap_seq_embs_recast, seg_num_tot, measure=opt.measure)
   # caption retrieval
   vid_clip_rep, _, _ = i2t(img_embs, cap_embs, measure=opt.measure)
   # image retrieval
