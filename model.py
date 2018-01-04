@@ -234,6 +234,23 @@ class CenterLoss(nn.Module):
   def forward(self, im, vid, sent, para, seg_num):
       return self.forward_loss(im, vid, seg_num) + self.forward_loss(sent, para, seg_num)
 
+class FC(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(FC, self).__init__()
+        self.output_size = output_size
+        self.fc = nn.Sequential(nn.Linear(input_size, output_size, bias=False), nn.ReLU(), nn.Linear(output_size, input_size, bias=False))
+        self.init_param()
+
+    def init_param(self):
+        self.fc[0].weight.data.copy_(torch.eye(self.output_size))
+        self.fc[2].weight.data.copy_(torch.eye(self.output_size))
+
+        
+    def forward(self, img_emb):
+        img_out = self.fc(img_emb)
+        return F.normalize(img_out)
+
+
 class VSE(object):
   """
   rkiros/uvs model
@@ -246,16 +263,20 @@ class VSE(object):
     self.img_enc = EncoderImage(opt.data_name, opt.img_dim, opt.img_first_size, dropout=opt.img_first_dropout,
                   no_imgnorm=opt.no_imgnorm, rnn_type=opt.rnn_type)
     self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim, opt.cap_first_size, opt.num_layers, dropout=opt.cap_first_dropout,
-            rnn_type=opt.rnn_type)
+                  rnn_type=opt.rnn_type)
     self.img_seq_enc = EncoderSequence(opt.img_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
     self.txt_seq_enc = EncoderSequence(opt.cap_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
+    self.fc_visual = FC(opt.embed_size, opt.img_first_size)
+    self.fc_language = FC(opt.embed_size, opt.cap_first_size)
     if torch.cuda.is_available():
       self.img_enc.cuda()
       self.txt_enc.cuda()
       self.img_seq_enc.cuda()
       self.txt_seq_enc.cuda()
+      self.fc_visual.cuda()
+      self.fc_language.cuda()
       cudnn.benchmark = True
 
     # Loss and Optimizer
@@ -265,11 +286,15 @@ class VSE(object):
     self.criterion_center = CenterLoss(margin=opt.margin,
                      measure=opt.measure,
                      max_violation=opt.max_violation, tune_center=opt.tune_seq)
+
+    #self.criterion_no_align = ContrastiveLoss_NoAlign(margin = opt.margin, measure = opt.measure, max_violation = opt.max_violation)
  
     params = list(self.txt_enc.parameters())
     params += list(self.img_enc.parameters())
     params += list(self.img_seq_enc.parameters())
     params += list(self.txt_seq_enc.parameters())
+    params += list(self.fc_visual.parameters())
+    params += list(self.fc_language.parameters())
     self.params = params
 
     self.optimizer = torch.optim.Adam(params, lr=opt.learning_rate)
@@ -278,7 +303,8 @@ class VSE(object):
 
   def state_dict(self):
     state_dict = [self.img_enc.state_dict(), self.txt_enc.state_dict(), \
-                  self.img_seq_enc.state_dict(), self.txt_seq_enc.state_dict() ]
+                  self.img_seq_enc.state_dict(), self.txt_seq_enc.state_dict(), \
+                  self.fc_visual.state_dict(), self.fc_language.state_dict()]
     return state_dict
 
   def load_state_dict(self, state_dict):
@@ -286,6 +312,8 @@ class VSE(object):
     self.txt_enc.load_state_dict(state_dict[1])
     self.img_seq_enc.load_state_dict(state_dict[2])
     self.txt_seq_enc.load_state_dict(state_dict[3])
+    self.fc_visual.load_state_dict(state_dict[4])
+    self.fc_language.load_state_dict(state_dict[5])
 
   def train_start(self):
     """switch to train mode
@@ -294,6 +322,8 @@ class VSE(object):
     self.txt_enc.train()
     self.img_seq_enc.train()
     self.txt_seq_enc.train()
+    self.fc_visual.train()
+    self.fc_language.train()
 
   def val_start(self):
     """switch to evaluate mode
@@ -302,6 +332,8 @@ class VSE(object):
     self.txt_enc.eval()
     self.img_seq_enc.eval()
     self.txt_seq_enc.eval()
+    self.fc_visual.eval()
+    self.fc_language.eval()
 
   def forward_emb(self, images, captions, lengths_img, lengths_cap):
     """Compute the image and caption embeddings
@@ -331,8 +363,8 @@ class VSE(object):
     img_seq_emb = self.img_seq_enc(img_reshape_emb, Variable(torch.Tensor(seg_num)))
     cap_seq_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(seg_num)))
 
-
     return img_seq_emb, cap_seq_emb
+
 
   def forward_loss(self, img_emb, cap_emb, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
@@ -340,6 +372,7 @@ class VSE(object):
     loss = self.criterion(img_emb, cap_emb)
     self.logger.update('Le'+name, loss.data[0], img_emb.size(0))
     return loss
+
 
   def forward_center_loss(self, clip_emb, vid_emb, txt_emb, para_emb, seg_num, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
@@ -358,20 +391,28 @@ class VSE(object):
 
     # compute the embeddings
     img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
-    vid_whole_emb, cap_whole_emb = self.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
     img_seq_emb, cap_seq_emb = self.structure_emb(img_emb, cap_emb, seg_num)
+    if opts.whole_loss:
+        vid_whole_emb, cap_whole_emb = self.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
+    if opts.center_loss:
+        img_seq_emb_down = self.fc_visual(img_seq_emb)
+        cap_seq_emb_down = self.fc_language(cap_seq_emb)
 
     # measure accuracy and record loss
     self.optimizer.zero_grad()
     loss_1 = self.forward_loss(img_seq_emb, cap_seq_emb, 'seq')
     loss_2 = self.forward_loss(img_emb, cap_emb, 'vid')
-    loss_3 = self.forward_loss(vid_whole_emb, cap_whole_emb, 'whole')
-    if opts.center_loss:
-        loss_4 = self.forward_center_loss(img_emb, img_seq_emb, cap_emb, cap_seq_emb, seg_num, 'sim_loss')
-#    loss_5 = self.forward_center_loss(img_emb, cap_seq_emb, img_emb, cap_seq_emb, seg_num, 'cross_loss')
-        loss = loss_1 + loss_2 + loss_3 + opts.center_loss_weight * loss_4 # + loss_5
+    if opts.whole_loss:
+        loss_3 = self.forward_loss(vid_whole_emb, cap_whole_emb, 'whole')
     else:
-        loss = loss_1 + loss_2 + loss_3
+        loss_3 = 0
+    if opts.center_loss:
+        loss_4 = self.forward_center_loss(img_emb, img_seq_emb_down, cap_emb, cap_seq_emb_down, seg_num, 'sim_loss')
+#    loss_5 = self.forward_center_loss(img_emb, cap_seq_emb, img_emb, cap_seq_emb, seg_num, 'cross_loss')
+        loss = loss_1 + (loss_2 + loss_3 + opts.center_loss_weight * loss_4 ) * opts.other_loss_weight
+    else:
+#        loss = loss_3
+        loss = loss_1 + (loss_2 + loss_3) * opts.other_loss_weight
 
     # compute gradient and do SGD step
     loss.backward()

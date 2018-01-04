@@ -85,9 +85,12 @@ def main():
             help='weight of center loss')
   parser.add_argument('--data_switch', default=0, type=int)
   parser.add_argument('--center_loss', action='store_true')
+  parser.add_argument('--whole_loss', action='store_true')
 
+  parser.add_argument('--other_loss_weight', default=1, type=float)
 
   opt = parser.parse_args()
+  print (opt)
 
   torch.cuda.set_device(opt.gpu_id)
 
@@ -130,6 +133,7 @@ def main():
       print("=> no checkpoint found at '{}'".format(opt.resume))
 
   # Train the Model
+  validate(opt, val_loader, model)
   best_rsum = 0
   for epoch in range(opt.num_epochs):
     adjust_learning_rate(opt, model.optimizer, epoch)
@@ -241,6 +245,8 @@ def validate(opt, val_loader, model):
          (cap_video_rep['r1'], cap_video_rep['r5'], cap_video_rep['r10'], cap_video_rep['medr'], cap_video_rep['meanr']))
   logging.info("Image to seq_text: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (clip_para_rep['r1'], clip_para_rep['r5'], clip_para_rep['r10'], clip_para_rep['medr'], clip_para_rep['meanr']))
+  logging.info("Currscore: %.1f" %
+         (currscore))
 
 
 
