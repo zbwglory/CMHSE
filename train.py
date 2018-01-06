@@ -67,8 +67,6 @@ def main():
             help='Take the absolute value of embedding vectors.')
   parser.add_argument('--no_imgnorm', action='store_true',
             help='Do not normalize the image embeddings.')
-  parser.add_argument('--tune_seq', action='store_true',
-            help='Tune seq during training')
   parser.add_argument('--gpu_id', default=0, type=int,
             help='GPU to use.')
   parser.add_argument('--rnn_type', default='maxout', choices=['maxout', 'seq2seq', 'attention'],
@@ -83,9 +81,13 @@ def main():
             help='first cap layer emb size')
   parser.add_argument('--center_loss_weight', default=1, type=float,
             help='weight of center loss')
-  parser.add_argument('--data_switch', default=0, type=int)
-  parser.add_argument('--center_loss', action='store_true')
 
+  parser.add_argument('--data_switch', default=0, type=int)
+  parser.add_argument('--center_loss', default=True, type=bool)
+  parser.add_argument('--identity', default=False, type=bool)
+  parser.add_argument('--tune_seq', default=True, type=bool)
+  parser.add_argument('--no_correspond', default=True, type=bool)
+  parser.add_argument('--other_loss_weight', default=1, type=float)
 
   opt = parser.parse_args()
   print (opt)
@@ -113,6 +115,7 @@ def main():
   print(model.img_seq_enc)
   print(model.txt_seq_enc)
 
+  start_epoch = 0
   # optionally resume from a checkpoint
   if opt.resume:
     if os.path.isfile(opt.resume):
@@ -131,6 +134,7 @@ def main():
       print("=> no checkpoint found at '{}'".format(opt.resume))
 
   # Train the Model
+#  validate(opt, val_loader, model)
   best_rsum = 0
   for epoch in range(start_epoch, opt.num_epochs):
     adjust_learning_rate(opt, model.optimizer, epoch)
@@ -202,11 +206,11 @@ def train(opt, train_loader, model, epoch, val_loader):
 
 def validate(opt, val_loader, model):
   # compute the encoding for all the validation images and captions
-  img_seq_embs, cap_seq_embs, img_embs, cap_embs, img_whole_embs, cap_whole_embs, seg_num_tot = encode_data(
+  img_seq_embs, cap_seq_embs, img_seq_embs_recast, cap_seq_embs_recast, img_embs, cap_embs, img_whole_embs, cap_whole_embs, seg_num_tot = encode_data(
     model, val_loader, opt.log_step, logging.info)
 
-  clip_para_rep, _, _ = i2p(img_embs, cap_embs, img_seq_embs, cap_seq_embs, seg_num_tot, measure=opt.measure)
-  cap_video_rep, _, _ = t2v(img_embs, cap_embs, img_seq_embs, cap_seq_embs, seg_num_tot, measure=opt.measure)
+  clip_para_rep, _, _ = i2p(img_embs, cap_embs, img_seq_embs_recast, cap_seq_embs_recast, seg_num_tot, measure=opt.measure)
+  cap_video_rep, _, _ = t2v(img_embs, cap_embs, img_seq_embs_recast, cap_seq_embs_recast, seg_num_tot, measure=opt.measure)
   # caption retrieval
   vid_clip_rep, _, _ = i2t(img_embs, cap_embs, measure=opt.measure)
   # image retrieval
@@ -242,6 +246,8 @@ def validate(opt, val_loader, model):
          (cap_video_rep['r1'], cap_video_rep['r5'], cap_video_rep['r10'], cap_video_rep['medr'], cap_video_rep['meanr']))
   logging.info("Image to seq_text: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (clip_para_rep['r1'], clip_para_rep['r5'], clip_para_rep['r10'], clip_para_rep['medr'], clip_para_rep['meanr']))
+  logging.info("Currscore: %.1f" %
+         (currscore))
 
 
 

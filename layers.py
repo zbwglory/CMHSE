@@ -44,12 +44,16 @@ class Seq2Seq(nn.Module):
     for w in weight.chunk(3, 0):
       init.xavier_uniform(w)
 
-  def forward(self, q_emb, q_len):
+  def forward(self, q_emb, q_len, hidden=None):
     lengths = q_len.long()
     lens, indices = torch.sort(lengths, 0, True)
 
-    packed = pack_padded_sequence(q_emb[indices.cuda()], lens.tolist(), batch_first=True)
-    _, outputs = self.rnn(packed)
+    packed_batch = pack_padded_sequence(q_emb[indices.cuda()], lens.tolist(), batch_first=True)
+    if hidden is not None:
+      N_, H_ = hidden.size()
+      _, outputs = self.rnn(packed_batch, hidden[indices.cuda()].view(1, N_, H_))
+    else:
+      _, outputs = self.rnn(packed_batch)
 
     if self.bidirectional:
       outputs = torch.cat([ outputs[0, :, :], outputs[1, :, :] ], dim=1)
@@ -64,7 +68,6 @@ class Seq2Seq(nn.Module):
 class Attention(nn.Module):
   def __init__(self, embedding_features, rnn_features, rnn_bidirectional=False):
     super(Attention, self).__init__()
-    self.register_buffer("mask",torch.FloatTensor())
     hid_size = rnn_features
     natt = rnn_features
 
@@ -86,13 +89,16 @@ class Attention(nn.Module):
     for w in weight.chunk(3, 0):
       init.xavier_uniform(w)
 
-  def forward(self, q_emb, q_len):
+  def forward(self, q_emb, q_len, hidden=None):
     lengths = q_len.long()
     lens, indices = torch.sort(lengths, 0, True)
 
     packed_batch = pack_padded_sequence(q_emb[indices.cuda()], lens.tolist(), batch_first=True)
-
-    hs, _ = self.rnn(packed_batch)
+    if hidden is not None:
+      N_, H_ = hidden.size()
+      hs, _ = self.rnn(packed_batch, hidden[indices.cuda()].view(1, N_, H_))
+    else:
+      hs, _ = self.rnn(packed_batch)
     enc_sents, len_s = pad_packed_sequence(hs, batch_first=True)
 
     emb_h = self.tanh(self.lin(enc_sents.contiguous().view(enc_sents.size(0)*enc_sents.size(1),-1)))  # Nwords * Emb
@@ -107,15 +113,20 @@ class Attention(nn.Module):
       raise
 
     _, _indices = torch.sort(indices, 0)
-    return attended.sum(1,True).squeeze(1)[_indices.cuda()]
+    outputs = attended.sum(1,True).squeeze(1)[_indices.cuda()]
 
-  def forward_att(self, q_emb, q_len):
+    return outputs
+
+  def forward_att(self, q_emb, q_len, hidden=None):
     lengths = q_len.long()
     lens, indices = torch.sort(lengths, 0, True)
 
     packed_batch = pack_padded_sequence(q_emb[indices.cuda()], lens.tolist(), batch_first=True)
-
-    hs, _ = self.rnn(packed_batch)
+    if hidden is not None:
+      N_, H_ = hidden.size()
+      hs, _ = self.rnn(packed_batch, hidden[indices.cuda()].view(1, N_, H_))
+    else:
+      hs, _ = self.rnn(packed_batch)
     enc_sents, len_s = pad_packed_sequence(hs, batch_first=True)
 
     _, _indices = torch.sort(indices, 0)
@@ -136,13 +147,13 @@ class Attention(nn.Module):
     return attended.sum(1,True).squeeze(1)[_indicies.cuda()], all_att
 
   def _list_to_bytemask(self,l):
-    mask = self._buffers['mask'].resize_(len(l),l[0]).fill_(1)
+    mask = torch.FloatTensor(len(l),l[0]).fill_(1)
 
     for i,j in enumerate(l):
       if j != l[0]:
         mask[i,j:l[0]] = 0
 
-    return mask
+    return mask.cuda()
 
   def _masked_softmax(self,mat,mask):
     exp = torch.exp(mat) * Variable(mask,requires_grad=False)
@@ -171,12 +182,16 @@ class Maxout(nn.Module):
     for w in weight.chunk(3, 0):
       init.xavier_uniform(w)
 
-  def forward(self, q_emb, q_len):
+  def forward(self, q_emb, q_len, hidden=None):
     lengths = q_len.long()
     lens, indices = torch.sort(lengths, 0, True)
 
-    packed = pack_padded_sequence(q_emb[indices.cuda()], lens.tolist(), batch_first=True)
-    hs, _ = self.rnn(packed)
+    packed_batch = pack_padded_sequence(q_emb[indices.cuda()], lens.tolist(), batch_first=True)
+    if hidden is not None:
+      N_, H_ = hidden.size()
+      hs, _ = self.rnn(packed_batch, hidden[indices.cuda()].view(1, N_, H_))
+    else:
+      hs, _ = self.rnn(packed_batch)
     outputs, _ = pad_packed_sequence(hs, batch_first=True)
 
     _, _indices = torch.sort(indices, 0)
