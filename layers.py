@@ -150,8 +150,7 @@ class Attention(nn.Module):
     mask = torch.FloatTensor(len(l),l[0]).fill_(1)
 
     for i,j in enumerate(l):
-      if j != l[0]:
-        mask[i,j:l[0]] = 0
+      if j != l[0]: mask[i,j:l[0]] = 0
 
     return mask.cuda()
 

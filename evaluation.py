@@ -75,8 +75,6 @@ def LogReporter(tb_logger, result, epoch, name):
         tb_logger.log_value(name+key, result[key], step=epoch)
     return
 
-    
-
 def encode_data(model, data_loader, log_step=10, logging=print):
   """Encode all images and captions loadable by `data_loader`
   """
@@ -110,12 +108,7 @@ def encode_data(model, data_loader, log_step=10, logging=print):
     cap_embs.append(cap_emb.data.cpu())
     vid_embs.append(vid_emb.data.cpu())
     para_embs.append(para_emb.data.cpu())
-    img_seq_recast_embs.append(vid_emb_recast.data.cpu())
-    cap_seq_recast_embs.append(para_emb_recast.data.cpu())
-    vid_contexts.append(vid_context.data.cpu())
-    para_contexts.append(para_context.data.cpu())
     seg_num_tot.extend(seg_num)
-
 
     # measure accuracy and record loss
     model.forward_loss(vid_emb, para_emb, 'test')
@@ -133,26 +126,16 @@ def encode_data(model, data_loader, log_step=10, logging=print):
             e_log=str(model.logger)))
     del images, captions
 
-  vid_embs = torch.cat(vid_embs, 0)
+  vid_embs  = torch.cat(vid_embs, 0)
   para_embs = torch.cat(para_embs, 0)
-  vid_embs = vid_embs.numpy()
+  vid_embs  = vid_embs.numpy()
   para_embs = para_embs.numpy()
-
-  img_seq_recast_embs = torch.cat(img_seq_recast_embs, 0)
-  cap_seq_recast_embs = torch.cat(cap_seq_recast_embs, 0)
-  img_seq_recast_embs = img_seq_recast_embs.numpy()
-  cap_seq_recast_embs = cap_seq_recast_embs.numpy()
-
-  vid_contexts = torch.cat(vid_contexts, 0)
-  para_contexts = torch.cat(para_contexts, 0)
-  vid_contexts = vid_contexts.numpy()
-  para_contexts = para_contexts.numpy()
 
   img_embs = torch.cat(img_embs, 0)
   cap_embs = torch.cat(cap_embs, 0)
   img_embs = img_embs.numpy()
   cap_embs = cap_embs.numpy()
-  return vid_embs, para_embs, img_seq_recast_embs, cap_seq_recast_embs, img_embs, cap_embs, vid_contexts, para_contexts, seg_num_tot
+  return vid_embs, para_embs, img_embs, cap_embs, seg_num_tot
 
 def i2t(images, captions, npts=None, measure='cosine'):
   npts = images.shape[0]

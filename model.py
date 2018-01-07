@@ -14,8 +14,9 @@ from IPython import embed
 from layers import *
 from loss import *
 
-def EncoderImage(data_name, img_dim, embed_size, finetune=False, dropout=0.5, 
-        no_imgnorm=False, rnn_type='maxout', bidirectional=False):
+def EncoderImage(data_name, img_dim, embed_size,
+                 finetune=False, dropout=0.5,
+                 no_imgnorm=False, rnn_type='maxout', bidirectional=False):
   """A wrapper to image encoders. Chooses between an encoder that uses
   precomputed image features, `EncoderImagePrecomp`, or an encoder that
   computes image features on the fly `EncoderImageFull`.
@@ -26,7 +27,8 @@ def EncoderImage(data_name, img_dim, embed_size, finetune=False, dropout=0.5,
   return img_enc
 
 class EncoderSequence(nn.Module):
-  def __init__(self, img_dim, embed_size, dropout=0, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
+  def __init__(self, img_dim, embed_size, dropout=0,
+                     no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
     super(EncoderSequence, self).__init__()
     self.embed_size = embed_size
     self.no_imgnorm = no_imgnorm
@@ -44,12 +46,8 @@ class EncoderSequence(nn.Module):
     else:
       raise ValueError('Unsupported RNN type')
 
-    # self.mlp = GroupMLP(embed_size, 2048, embed_size, drop=0.5, groups=64)
-
   def forward(self, x, lengths, hidden=None):
     """Extract image feature vectors."""
-    #img_emb = self.dropout(x)
-    # outputs = self.rnn(img_emb, lengths)
     outputs = self.rnn(x, lengths, hidden)
 
     # normalization in the joint embedding space
@@ -74,8 +72,6 @@ class EncoderImagePrecomp(nn.Module):
       self.rnn = Maxout(img_dim, embed_size, rnn_bidirectional=bidirectional)
     else:
       raise ValueError('Unsupported RNN type')
-
-    # self.mlp = GroupMLP(embed_size, 2048, embed_size, drop=0.5, groups=64)
 
   def forward(self, x, lengths):
     """Extract image feature vectors."""
@@ -127,20 +123,19 @@ class EncoderText(nn.Module):
     return F.normalize(outputs)
 
 class FC(nn.Module):
-    def __init__(self, input_size, output_size, identity):
-        super(FC, self).__init__()
-        self.output_size = output_size
-        self.fc = nn.Sequential(nn.Linear(input_size, output_size, bias=False), nn.ReLU(), nn.Linear(output_size, input_size, bias=False))
-        if identity: self.init_param()
+  def __init__(self, input_size, output_size, identity):
+    super(FC, self).__init__()
+    self.output_size = output_size
+    self.fc = nn.Sequential(nn.Linear(input_size, output_size, bias=False), nn.ReLU(), nn.Linear(output_size, input_size, bias=False))
+    if identity: self.init_param()
 
-    def init_param(self):
-        self.fc[0].weight.data.copy_(torch.eye(self.output_size))
-        self.fc[2].weight.data.copy_(torch.eye(self.output_size))
+  def init_param(self):
+    self.fc[0].weight.data.copy_(torch.eye(self.output_size))
+    self.fc[2].weight.data.copy_(torch.eye(self.output_size))
 
-    def forward(self, img_emb):
-        img_out = self.fc(img_emb)
-        return F.normalize(img_out)
-
+  def forward(self, img_emb):
+    img_out = self.fc(img_emb)
+    return F.normalize(img_out)
 
 class VSE(object):
   def __init__(self, opt):
@@ -283,14 +278,13 @@ class VSE(object):
     vid_emb, para_emb = self.structure_emb(img_emb, cap_emb, seg_num, vid_context, para_context)
 
     if opts.center_loss:
-      vid_reproject = self.fc_visual(vid_emb)
+      vid_reproject  = self.fc_visual(vid_emb)
       para_reproject = self.fc_language(para_emb)
 
     # measure accuracy and record loss
     self.optimizer.zero_grad()
 
     loss_1 = self.forward_loss(vid_emb, para_emb, '_vid')
-
     if opts.no_correspond:
       loss_2 = self.forward_loss_no_correspond(img_emb, cap_emb, seg_num, '_clip')
     else:
