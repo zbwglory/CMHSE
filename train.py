@@ -6,7 +6,8 @@ import shutil
 import torch
 
 import data
-from vocab import Vocabulary  # NOQA
+# import didemo.data as data
+from vocab import Vocabulary
 from model import VSE
 from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter, t2v, i2p
 
@@ -59,7 +60,7 @@ def main():
             help='path to latest checkpoint (default: none)')
   parser.add_argument('--max_violation', action='store_true',
             help='Use max instead of sum in the rank loss.')
-  parser.add_argument('--img_dim', default=500, type=int,
+  parser.add_argument('--img_dim', default=500, choices=[500, 2048],
             help='Dimensionality of the image embedding.')
   parser.add_argument('--measure', default='cosine',
             help='Similarity measure used (cosine|order)')
@@ -110,9 +111,9 @@ def main():
   model = VSE(opt)
 
   print('Print out models:')
-  print(model.img_enc)
+  print(model.clip_enc)
   print(model.txt_enc)
-  print(model.img_seq_enc)
+  print(model.vid_seq_enc)
   print(model.txt_seq_enc)
 
   start_epoch = 0
@@ -134,7 +135,6 @@ def main():
       print("=> no checkpoint found at '{}'".format(opt.resume))
 
   # Train the Model
-#  validate(opt, val_loader, model)
   best_rsum = 0
   for epoch in range(start_epoch, opt.num_epochs):
     adjust_learning_rate(opt, model.optimizer, epoch)
@@ -206,21 +206,21 @@ def train(opt, train_loader, model, epoch, val_loader):
 
 def validate(opt, val_loader, model):
   # compute the encoding for all the validation images and captions
-  img_seq_embs, cap_seq_embs, img_embs, cap_embs, seg_num_tot = encode_data(
+  vid_seq_embs, para_seq_embs, clip_embs, cap_embs, _, _ = encode_data(
     model, val_loader, opt.log_step, logging.info)
 
   # caption retrieval
-  vid_clip_rep, _, _ = i2t(img_embs, cap_embs, measure=opt.measure)
+  vid_clip_rep, _, _ = i2t(clip_embs, cap_embs, measure=opt.measure)
   # image retrieval
-  cap_clip_rep, _, _ = t2i(img_embs, cap_embs, measure=opt.measure)
+  cap_clip_rep, _, _ = t2i(clip_embs, cap_embs, measure=opt.measure)
 
   # caption retrieval
-  vid_seq_rep, _, _ = i2t(img_seq_embs, cap_seq_embs, measure=opt.measure)
+  vid_seq_rep, _, _  = i2t(vid_seq_embs, para_seq_embs, measure=opt.measure)
   # image retrieval
-  cap_seq_rep, _, _ = t2i(img_seq_embs, cap_seq_embs, measure=opt.measure)
+  para_seq_rep, _, _ = t2i(vid_seq_embs, para_seq_embs, measure=opt.measure)
 
   # sum of recalls to be used for early stopping
-  currscore = vid_seq_rep['sum'] + cap_seq_rep['sum']
+  currscore = vid_seq_rep['sum'] + para_seq_rep['sum']
 
   logging.info("Clip to Sent: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (vid_clip_rep['r1'], vid_clip_rep['r5'], vid_clip_rep['r10'], vid_clip_rep['medr'], vid_clip_rep['meanr']))
@@ -229,14 +229,14 @@ def validate(opt, val_loader, model):
   logging.info("Video to Paragraph: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (vid_seq_rep['r1'], vid_seq_rep['r5'], vid_seq_rep['r10'], vid_seq_rep['medr'], vid_seq_rep['meanr']))
   logging.info("Paragraph to Video: %.1f, %.1f, %.1f, %.1f, %.1f" %
-         (cap_seq_rep['r1'], cap_seq_rep['r5'], cap_seq_rep['r10'], cap_seq_rep['medr'], cap_seq_rep['meanr']))
+         (para_seq_rep['r1'], para_seq_rep['r5'], para_seq_rep['r10'], para_seq_rep['medr'], para_seq_rep['meanr']))
   logging.info("Currscore: %.1f" % (currscore))
 
   # record metrics in tensorboard
   LogReporter(tb_logger, vid_clip_rep, model.Eiters, 'clip')
   LogReporter(tb_logger, cap_clip_rep, model.Eiters, 'clipi')
   LogReporter(tb_logger, vid_seq_rep, model.Eiters, 'seq')
-  LogReporter(tb_logger, cap_seq_rep, model.Eiters, 'seqi')
+  LogReporter(tb_logger, para_seq_rep, model.Eiters, 'seqi')
   tb_logger.log_value('rsum', currscore, step=model.Eiters)
 
   return currscore
@@ -270,7 +270,6 @@ def accuracy(output, target, topk=(1,)):
     correct_k = correct[:k].view(-1).float().sum(0)
     res.append(correct_k.mul_(100.0 / batch_size))
   return res
-
 
 if __name__ == '__main__':
   main()

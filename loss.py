@@ -23,7 +23,7 @@ class ContrastiveLoss_no_correspond(nn.Module):
 
     self.max_violation = max_violation
 
-  def forward(self, im, s, seg_num):
+  def forward(self, im, s, num_clips, num_caps):
     # compute image-sentence score matrix
     scores = self.sim(im, s)
     diagonal = scores.diag().view(im.size(0), 1)
@@ -39,8 +39,10 @@ class ContrastiveLoss_no_correspond(nn.Module):
 
     # clear diagonals
     mask = torch.zeros(scores.shape)
-    for i in range(len(seg_num)):
-        mask[sum(seg_num[0:i]):sum(seg_num[0:i+1]), sum(seg_num[0:i]):sum(seg_num[0:i+1])] = 1
+    N_ = len(num_clips)
+    assert N_ == len(num_caps)
+    for i in range(N_):
+      mask[sum(num_clips[0:i]):sum(num_clips[0:i+1]), sum(num_caps[0:i]):sum(num_caps[0:i+1])] = 1
 
     mask = mask > 0.5
     I = Variable(mask)
@@ -55,9 +57,6 @@ class ContrastiveLoss_no_correspond(nn.Module):
       cost_im = cost_im.max(0)[0]
 
     return cost_s.sum() + cost_im.sum()
-    # return cost_s.sum()
-
-
 
 class ContrastiveLoss(nn.Module):
   def __init__(self, margin=0, measure=False, max_violation=False):
@@ -112,21 +111,19 @@ class CenterLoss(nn.Module):
   def forward_loss(self, im, vid, seg_num):
     # compute image-sentence score matrix
     if self.tune_center:
-        pass
+      pass
     else:
-        vid = vid.detach()
+      vid = vid.detach()
     scores = self.sim(im, vid)
 
     middle_block = Variable(torch.zeros(scores.shape[0])).cuda()
 
     mask = torch.zeros(scores.shape)
-
     for i in range(len(seg_num)):
-        cur_block = scores[sum(seg_num[0:i]):sum(seg_num[0:i+1]), i]
-        middle_block[sum(seg_num[0:i]):sum(seg_num[0:i+1])] = cur_block
-        mask[sum(seg_num[0:i]):sum(seg_num[0:i+1]), i] = 1
+      cur_block = scores[sum(seg_num[0:i]):sum(seg_num[0:i+1]), i]
+      middle_block[sum(seg_num[0:i]):sum(seg_num[0:i+1])] = cur_block
+      mask[sum(seg_num[0:i]):sum(seg_num[0:i+1]), i] = 1
     middle_block_reshape = middle_block.view(middle_block.shape[0],1).expand_as(scores)
-
 
     # compare every diagonal score to scores in its column
     # caption retrieval
@@ -145,6 +142,6 @@ class CenterLoss(nn.Module):
 
     return cost_s.sum()
 
-  def forward(self, im, vid, sent, para, seg_num):
-      return self.forward_loss(im, vid, seg_num) + self.forward_loss(sent, para, seg_num)
+  def forward(self, clips, videos, caps, paragraphs, num_clips, num_caps):
+      return self.forward_loss(clips, videos, num_clips) + self.forward_loss(caps, paragraphs, num_caps)
 

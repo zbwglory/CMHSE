@@ -22,9 +22,9 @@ def EncoderImage(data_name, img_dim, embed_size,
   computes image features on the fly `EncoderImageFull`.
   """
   if data_name.endswith('_precomp'):
-    img_enc = EncoderImagePrecomp(img_dim, embed_size, dropout=dropout, no_imgnorm=no_imgnorm, bidirectional=bidirectional, rnn_type=rnn_type)
+    clip_enc = EncoderImagePrecomp(img_dim, embed_size, dropout=dropout, no_imgnorm=no_imgnorm, bidirectional=bidirectional, rnn_type=rnn_type)
 
-  return img_enc
+  return clip_enc
 
 class EncoderSequence(nn.Module):
   def __init__(self, img_dim, embed_size, dropout=0,
@@ -54,7 +54,8 @@ class EncoderSequence(nn.Module):
     return F.normalize(outputs)
 
 class EncoderImagePrecomp(nn.Module):
-  def __init__(self, img_dim, embed_size, dropout=0, no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
+  def __init__(self, img_dim, embed_size, dropout=0,
+      no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
     super(EncoderImagePrecomp, self).__init__()
     self.embed_size = embed_size
     self.no_imgnorm = no_imgnorm
@@ -85,7 +86,8 @@ class EncoderImagePrecomp(nn.Module):
     return F.normalize(outputs)
 
 class EncoderText(nn.Module):
-  def __init__(self, vocab_size, word_dim, embed_size, num_layers, dropout=0, bidirectional=False, rnn_type='maxout'):
+  def __init__(self, vocab_size, word_dim, embed_size,
+      num_layers, dropout=0, bidirectional=False, rnn_type='maxout'):
     super(EncoderText, self).__init__()
     self.embed_size = embed_size
     self.bidirectional = bidirectional
@@ -133,18 +135,18 @@ class FC(nn.Module):
     self.fc[0].weight.data.copy_(torch.eye(self.output_size))
     self.fc[2].weight.data.copy_(torch.eye(self.output_size))
 
-  def forward(self, img_emb):
-    img_out = self.fc(img_emb)
+  def forward(self, clip_emb):
+    img_out = self.fc(clip_emb)
     return F.normalize(img_out)
 
 class VSE(object):
   def __init__(self, opt):
     self.grad_clip = opt.grad_clip
-    self.img_enc = EncoderImage(opt.data_name, opt.img_dim, opt.img_first_size, dropout=opt.img_first_dropout,
+    self.clip_enc = EncoderImage(opt.data_name, opt.img_dim, opt.img_first_size, dropout=opt.img_first_dropout,
                   no_imgnorm=opt.no_imgnorm, rnn_type=opt.rnn_type)
     self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim, opt.cap_first_size, opt.num_layers, dropout=opt.cap_first_dropout,
                   rnn_type=opt.rnn_type)
-    self.img_seq_enc = EncoderSequence(opt.img_first_size, opt.embed_size,
+    self.vid_seq_enc = EncoderSequence(opt.img_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
     self.txt_seq_enc = EncoderSequence(opt.cap_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
@@ -152,9 +154,9 @@ class VSE(object):
     self.fc_visual = FC(opt.embed_size, opt.img_first_size, opt.identity)
     self.fc_language = FC(opt.embed_size, opt.cap_first_size, opt.identity)
     if torch.cuda.is_available():
-      self.img_enc.cuda()
+      self.clip_enc.cuda()
       self.txt_enc.cuda()
-      self.img_seq_enc.cuda()
+      self.vid_seq_enc.cuda()
       self.txt_seq_enc.cuda()
       self.fc_visual.cuda()
       self.fc_language.cuda()
@@ -172,8 +174,8 @@ class VSE(object):
                      max_violation=opt.max_violation, tune_center=opt.tune_seq)
 
     params = list(self.txt_enc.parameters())
-    params += list(self.img_enc.parameters())
-    params += list(self.img_seq_enc.parameters())
+    params += list(self.clip_enc.parameters())
+    params += list(self.vid_seq_enc.parameters())
     params += list(self.txt_seq_enc.parameters())
     params += list(self.fc_visual.parameters())
     params += list(self.fc_language.parameters())
@@ -184,25 +186,25 @@ class VSE(object):
     self.Eiters = 0
 
   def state_dict(self):
-    state_dict = [self.img_enc.state_dict(), self.txt_enc.state_dict(), \
-                  self.img_seq_enc.state_dict(), self.txt_seq_enc.state_dict(), \
+    state_dict = [self.clip_enc.state_dict(), self.txt_enc.state_dict(), \
+                  self.vid_seq_enc.state_dict(), self.txt_seq_enc.state_dict(), \
                   self.fc_visual.state_dict(), self.fc_language.state_dict()]
     return state_dict
 
   def load_state_dict(self, state_dict):
-    self.img_enc.load_state_dict(state_dict[0])
+    self.clip_enc.load_state_dict(state_dict[0])
     self.txt_enc.load_state_dict(state_dict[1])
-    self.img_seq_enc.load_state_dict(state_dict[2])
+    self.vid_seq_enc.load_state_dict(state_dict[2])
     self.txt_seq_enc.load_state_dict(state_dict[3])
-    self.fc_visual.load_state_dict(state_dict[4])
-    self.fc_language.load_state_dict(state_dict[5])
+    # self.fc_visual.load_state_dict(state_dict[4])
+    # self.fc_language.load_state_dict(state_dict[5])
 
   def train_start(self):
     """switch to train mode
     """
-    self.img_enc.train()
+    self.clip_enc.train()
     self.txt_enc.train()
-    self.img_seq_enc.train()
+    self.vid_seq_enc.train()
     self.txt_seq_enc.train()
     self.fc_visual.train()
     self.fc_language.train()
@@ -210,72 +212,78 @@ class VSE(object):
   def val_start(self):
     """switch to evaluate mode
     """
-    self.img_enc.eval()
+    self.clip_enc.eval()
     self.txt_enc.eval()
-    self.img_seq_enc.eval()
+    self.vid_seq_enc.eval()
     self.txt_seq_enc.eval()
     self.fc_visual.eval()
     self.fc_language.eval()
 
-  def forward_emb(self, images, captions, lengths_img, lengths_cap):
-    images   = Variable(images)
+  def forward_emb(self, clips, captions, lengths_clip, lengths_cap):
+    clips   = Variable(clips)
     captions = Variable(captions)
     if torch.cuda.is_available():
-      images = images.cuda()
+      clips = clips.cuda()
       captions = captions.cuda()
 
     # Forward
-    img_emb = self.img_enc(images, Variable(lengths_img))
+    clip_emb = self.clip_enc(clips, Variable(lengths_clip))
     cap_emb = self.txt_enc(captions, Variable(lengths_cap))
-    return img_emb, cap_emb
+    return clip_emb, cap_emb
 
-  def structure_emb(self, img_emb, cap_emb, seg_num, vid_context, para_context):
-    img_reshape_emb = Variable(torch.zeros(len(seg_num), max(seg_num), img_emb.shape[1])).cuda()
-    cap_reshape_emb = Variable(torch.zeros(len(seg_num), max(seg_num), cap_emb.shape[1])).cuda()
+  def structure_emb(self, clip_emb, cap_emb, num_clips, num_caps, vid_context=None, para_context=None):
+    img_reshape_emb = Variable(torch.zeros(len(num_clips), max(num_clips), clip_emb.shape[1])).cuda()
+    cap_reshape_emb = Variable(torch.zeros(len(num_caps),  max(num_caps),  cap_emb.shape[1])).cuda()
 
     cur_displace = 0
-    for i, end_place in enumerate(seg_num):
-      img_reshape_emb[i, 0:end_place, :] = img_emb[cur_displace : cur_displace + end_place, :]
+    for i, end_place in enumerate(num_clips):
+      img_reshape_emb[i, 0:end_place, :] = clip_emb[cur_displace : cur_displace + end_place, :]
+      cur_displace = cur_displace + end_place
+
+    cur_displace = 0
+    for i, end_place in enumerate(num_caps):
       cap_reshape_emb[i, 0:end_place, :] = cap_emb[cur_displace : cur_displace + end_place, :]
       cur_displace = cur_displace + end_place
 
-    vid_emb  = self.img_seq_enc(img_reshape_emb, Variable(torch.Tensor(seg_num)), vid_context)
-    para_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(seg_num)), para_context)
+    vid_emb  = self.vid_seq_enc(img_reshape_emb, Variable(torch.Tensor(num_clips)), vid_context)
+    para_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(num_caps)), para_context)
 
     return vid_emb, para_emb
 
-  def forward_loss(self, img_emb, cap_emb, name, **kwargs):
+  def forward_loss(self, clip_emb, cap_emb, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
     """
-    loss = self.criterion(img_emb, cap_emb)
-    self.logger.update('Le'+name, loss.data[0], img_emb.size(0))
-    return loss
-
-  def forward_loss_no_correspond(self, img_emb, cap_emb, seg_num, name, **kwargs):
-    """Compute the loss given pairs of image and caption embeddings
-    """
-    loss = self.criterion_no_correspond(img_emb, cap_emb, seg_num)
-    self.logger.update('Le'+name, loss.data[0], img_emb.size(0))
-    return loss
-
-  def forward_center_loss(self, clip_emb, vid_emb, txt_emb, para_emb, seg_num, name, **kwargs):
-    """Compute the loss given pairs of image and caption embeddings
-    """
-    loss = self.criterion_center(clip_emb, vid_emb, txt_emb, para_emb, seg_num)
+    loss = self.criterion(clip_emb, cap_emb)
     self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
     return loss
 
-  def train_emb(self, opts, images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num, *args):
-    """One training step given images and captions.
+  def forward_loss_no_correspond(self, clip_emb, cap_emb, num_clips, num_caps, name, **kwargs):
+    """Compute the loss given pairs of image and caption embeddings
+    """
+    loss = self.criterion_no_correspond(clip_emb, cap_emb, num_clips, num_caps)
+    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
+    return loss
+
+  def forward_center_loss(self, clip_emb, vid_emb, cap_emb, para_emb, num_clips, num_caps, name, **kwargs):
+    """Compute the loss given pairs of image and caption embeddings
+    """
+    loss = self.criterion_center(clip_emb, vid_emb, cap_emb, para_emb, num_clips, num_caps)
+    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
+    return loss
+
+  def train_emb(self, opts, clips, captions, videos, paragraphs,
+      lengths_clip, lengths_cap, lengths_video, lengths_paragraph,
+      num_clips, num_caps, ind, *args):
+    """One training step given clips and captions.
     """
     self.Eiters += 1
     self.logger.update('Eit', self.Eiters)
     self.logger.update('lr', self.optimizer.param_groups[0]['lr'])
 
     # compute the embeddings
-    img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
-    vid_context, para_context = self.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
-    vid_emb, para_emb = self.structure_emb(img_emb, cap_emb, seg_num, vid_context, para_context)
+    clip_emb, cap_emb = self.forward_emb(clips, captions, lengths_clip, lengths_cap)
+    vid_context, para_context = self.forward_emb(videos, paragraphs, lengths_video, lengths_paragraph)
+    vid_emb, para_emb = self.structure_emb(clip_emb, cap_emb, num_clips, num_caps, vid_context, para_context)
 
     if opts.center_loss:
       vid_reproject  = self.fc_visual(vid_emb)
@@ -286,37 +294,43 @@ class VSE(object):
 
     loss_1 = self.forward_loss(vid_emb, para_emb, '_vid')
     if opts.no_correspond:
-      loss_2 = self.forward_loss_no_correspond(img_emb, cap_emb, seg_num, '_clip')
+      loss_2 = self.forward_loss_no_correspond(clip_emb, cap_emb, num_clips, num_caps, '_clip')
     else:
-      loss_2 = self.forward_loss(img_emb, cap_emb, '_clip')
+      # loss_2 = self.forward_loss(clip_emb, cap_emb, '_clip')
+      loss_2 = 0
 
+    loss_3 = self.forward_loss(vid_context, para_context, '_context')
     if opts.center_loss:
-      loss_4 = self.forward_center_loss(img_emb, vid_reproject, cap_emb, para_reproject, seg_num, '_center')
+      loss_4 = self.forward_center_loss(clip_emb, vid_reproject, cap_emb, para_reproject, num_clips, num_caps, '_center')
     else:
       loss_4 = 0
 
     loss_5 = self.forward_loss(vid_emb, vid_emb, '_ex_vid') + self.forward_loss(para_emb, para_emb, '_ex_para')
 
-    loss = loss_1 + (loss_2 + opts.center_loss_weight * loss_4 + loss_5) * opts.other_loss_weight
+    loss = loss_1 + (loss_2 + loss_3 + opts.center_loss_weight * loss_4 + loss_5) * opts.other_loss_weight
 
     # compute gradient and do SGD step
     loss.backward()
     if self.grad_clip > 0: clip_grad_norm(self.params, self.grad_clip)
     self.optimizer.step()
 
-  def test_emb(self, images, captions, lengths_img, lengths_cap, ind, seg_nums, offset=0):
-    img_emb, cap_emb = self.forward_emb(images, captions, lengths_img, lengths_cap)
-    img_reshape_emb = Variable(torch.zeros(len(seg_nums), max(seg_nums), img_emb.shape[1])).cuda()
-    cap_reshape_emb = Variable(torch.zeros(len(seg_nums), max(seg_nums), cap_emb.shape[1])).cuda()
+  def test_emb(self, clips, captions, lengths_clip, lengths_cap, ind, num_clips, num_caps, offset=0):
+    clip_emb, cap_emb = self.forward_emb(clips, captions, lengths_clip, lengths_cap)
+    img_reshape_emb = Variable(torch.zeros(len(num_clips), max(num_clips), clip_emb.shape[1])).cuda()
+    cap_reshape_emb = Variable(torch.zeros(len(num_caps),  max(num_caps),  cap_emb.shape[1])).cuda()
 
     cur_displace = 0
-    for i, seg_num in enumerate(seg_nums):
+    for i, seg_num in enumerate(num_clips):
       seg_len = max(seg_num - offset, 1)
-      img_reshape_emb[i, 0:seg_len, :] = img_emb[cur_displace : cur_displace + seg_len, :]
+      img_reshape_emb[i, 0:seg_len, :] = clip_emb[cur_displace : cur_displace + seg_len, :]
+      cur_displace = cur_displace + seg_num
+
+    cur_displace = 0
+    for i, seg_num in enumerate(num_caps):
       cap_reshape_emb[i, 0:seg_num, :] = cap_emb[cur_displace : cur_displace + seg_num, :]
       cur_displace = cur_displace + seg_num
 
-    vid_emb  = self.img_seq_enc(img_reshape_emb, Variable(torch.Tensor(seg_nums)))
-    para_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(seg_nums)))
+    vid_emb  = self.vid_seq_enc(img_reshape_emb, Variable(torch.Tensor(num_clips)))
+    para_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(num_caps)))
 
     return vid_emb, para_emb

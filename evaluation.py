@@ -75,7 +75,7 @@ def LogReporter(tb_logger, result, epoch, name):
         tb_logger.log_value(name+key, result[key], step=epoch)
     return
 
-def encode_data(model, data_loader, log_step=10, logging=print):
+def encode_data(model, data_loader, log_step=10, logging=print, contextual_model=True):
   """Encode all images and captions loadable by `data_loader`
   """
   batch_time = AverageMeter()
@@ -87,28 +87,29 @@ def encode_data(model, data_loader, log_step=10, logging=print):
   end = time.time()
 
   # numpy array to keep all the embeddings
-  img_embs, cap_embs = [], []
+  clip_embs, cap_embs = [], []
   vid_embs, para_embs = [], []
   img_seq_recast_embs, cap_seq_recast_embs = [], []
   vid_contexts, para_contexts = [], []
-  seg_num_tot = []
-  for i, (images, captions, video_whole, captions_whole, lengths_img, lengths_cap, lengths_whole_vid, lengths_whole_cap, ind, seg_num) in enumerate(data_loader):
+  for i, (clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, num_clips, num_caps, ind) in enumerate(data_loader):
     # make sure val logger is used
     model.logger = val_logger
 
     # compute the embeddings
-    img_emb, cap_emb = model.forward_emb(images, captions, lengths_img, lengths_cap)
-    vid_context, para_context = model.forward_emb(video_whole, captions_whole, lengths_whole_vid, lengths_whole_cap)
-    vid_emb, para_emb = model.structure_emb(img_emb, cap_emb, seg_num, vid_context, para_context)
-    vid_emb_recast = model.fc_visual(vid_emb)
-    para_emb_recast = model.fc_language(para_emb)
+    clip_emb, cap_emb = model.forward_emb(clips, captions, lengths_clip, lengths_cap)
+    vid_context, para_context = model.forward_emb(videos, paragraphs, lengths_video, lengths_paragraph)
+    if contextual_model:
+      vid_emb, para_emb = model.structure_emb(clip_emb, cap_emb, num_clips, num_caps, vid_context, para_context)
+    else:
+      vid_emb, para_emb = model.structure_emb(clip_emb, cap_emb, num_clips, num_caps)
 
     # initialize the numpy arrays given the size of the embeddings
-    img_embs.append(img_emb.data.cpu())
+    clip_embs.append(clip_emb.data.cpu())
     cap_embs.append(cap_emb.data.cpu())
     vid_embs.append(vid_emb.data.cpu())
     para_embs.append(para_emb.data.cpu())
-    seg_num_tot.extend(seg_num)
+    vid_contexts.append( vid_context.data.cpu())
+    para_contexts.append(para_context.data.cpu())
 
     # measure accuracy and record loss
     model.forward_loss(vid_emb, para_emb, 'test')
@@ -124,18 +125,23 @@ def encode_data(model, data_loader, log_step=10, logging=print):
           .format(
             i, len(data_loader), batch_time=batch_time,
             e_log=str(model.logger)))
-    del images, captions
 
   vid_embs  = torch.cat(vid_embs, 0)
   para_embs = torch.cat(para_embs, 0)
   vid_embs  = vid_embs.numpy()
   para_embs = para_embs.numpy()
 
-  img_embs = torch.cat(img_embs, 0)
+  clip_embs = torch.cat(clip_embs, 0)
   cap_embs = torch.cat(cap_embs, 0)
-  img_embs = img_embs.numpy()
+  clip_embs = clip_embs.numpy()
   cap_embs = cap_embs.numpy()
-  return vid_embs, para_embs, img_embs, cap_embs, seg_num_tot
+
+  vid_contexts  = torch.cat(vid_contexts, 0)
+  para_contexts = torch.cat(para_contexts, 0)
+  vid_contexts  = vid_contexts.numpy()
+  para_contexts = para_contexts.numpy()
+
+  return vid_embs, para_embs, clip_embs, cap_embs, vid_contexts, para_contexts
 
 def i2t(images, captions, npts=None, measure='cosine'):
   npts = images.shape[0]
@@ -258,9 +264,6 @@ def i2p(images, captions, video, paragraph, seg_num, npts=None, measure='cosine'
   report_dict['sum'] = r1+r5+r10
   return report_dict, top1, ranks
 
-
-
-
 def encode_eval_data(model, data_loader, log_step=10, logging=print, num_offsets=3):
   """Encode all images and captions loadable by `data_loader`
   """
@@ -275,13 +278,13 @@ def encode_eval_data(model, data_loader, log_step=10, logging=print, num_offsets
   # numpy array to keep all the embeddings
   vid_embs = [ [] for _ in xrange(num_offsets)]
   para_embs = [ [] for _ in xrange(num_offsets)]
-  for i, (images, captions, _, _, lengths_img, lengths_cap, _, _, ind, seg_nums) in enumerate(data_loader):
+  for i, (images, captions, _, _, lengths_img, lengths_cap, _, _, num_clips, num_caps, ind) in enumerate(data_loader):
     # make sure val logger is used
     model.logger = val_logger
 
     # compute the embeddings
     for _offset in xrange(num_offsets):
-      vid_emb, para_emb = model.test_emb(images, captions, lengths_img, lengths_cap, ind, seg_nums, offset=_offset)
+      vid_emb, para_emb = model.test_emb(images, captions, lengths_img, lengths_cap, ind, num_clips, num_caps, offset=_offset)
 
       vid_embs[_offset].append(vid_emb.data.cpu())
       para_embs[_offset].append(para_emb.data.cpu())
@@ -301,3 +304,47 @@ def encode_eval_data(model, data_loader, log_step=10, logging=print, num_offsets
   para_embs = [ torch.cat(para_embs[_offset], 0).numpy() for _offset in xrange(num_offsets) ]
 
   return vid_embs, para_embs
+
+def encode_flat_data(model, data_loader, log_step=10, logging=print):
+  """Encode all images and captions loadable by `data_loader`
+  """
+  batch_time = AverageMeter()
+  val_logger = LogCollector()
+
+  # switch to evaluate mode
+  model.val_start()
+
+  end = time.time()
+
+  # numpy array to keep all the embeddings
+  clip_embs, cap_embs = [], []
+  vid_embs, para_embs = [], []
+  vid_contexts, para_contexts = [], []
+  for i, (clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, num_clips, num_caps, ind) in enumerate(data_loader):
+    # make sure val logger is used
+    model.logger = val_logger
+
+    vid_context, para_context = model.forward_emb(videos, paragraphs, lengths_video, lengths_paragraph)
+    vid_contexts.append( vid_context.data.cpu())
+    para_contexts.append(para_context.data.cpu())
+
+    # measure accuracy and record loss
+    model.forward_loss(vid_emb, para_emb, 'test')
+
+    # measure elapsed time
+    batch_time.update(time.time() - end)
+    end = time.time()
+
+    if i % log_step == 0:
+      logging('Test: [{0}/{1}]\t'
+          '{e_log}\t'
+          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+          .format(
+            i, len(data_loader), batch_time=batch_time,
+            e_log=str(model.logger)))
+    del images, captions
+
+  vid_contexts  = torch.cat(vid_contexts, 0)
+  para_contexts = torch.cat(para_contexts, 0)
+
+  return vid_contexts, para_contexts
