@@ -5,8 +5,8 @@ import shutil
 
 import torch
 
-import data
-# import didemo.data as data
+# import data
+import didemo.data as data
 from vocab import Vocabulary
 from model import VSE
 from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter, t2v, i2p
@@ -60,7 +60,7 @@ def main():
             help='path to latest checkpoint (default: none)')
   parser.add_argument('--max_violation', action='store_true',
             help='Use max instead of sum in the rank loss.')
-  parser.add_argument('--img_dim', default=500, choices=[500, 2048],
+  parser.add_argument('--img_dim', default=2048, choices=[500, 2048],
             help='Dimensionality of the image embedding.')
   parser.add_argument('--measure', default='cosine',
             help='Similarity measure used (cosine|order)')
