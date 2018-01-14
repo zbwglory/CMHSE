@@ -12,9 +12,9 @@ from IPython import embed
 def cosine_sim(im, s):
   return im.mm(s.t())
 
-class ContrastiveLoss_no_correspond(nn.Module):
+class GroupWiseContrastiveLoss(nn.Module):
   def __init__(self, margin=0, measure=False, max_violation=False):
-    super(ContrastiveLoss_no_correspond, self).__init__()
+    super(GroupWiseContrastiveLoss, self).__init__()
     self.margin = margin
     if measure == 'order':
       NotImplemented
@@ -26,25 +26,33 @@ class ContrastiveLoss_no_correspond(nn.Module):
   def forward(self, im, s, num_clips, num_caps):
     # compute image-sentence score matrix
     scores = self.sim(im, s)
-    diagonal = scores.diag().view(im.size(0), 1)
-    d1 = diagonal.expand_as(scores)
-    d2 = diagonal.t().expand_as(scores)
+
+    # generate mask
+    mask = torch.zeros(scores.shape)
+    N_ = len(num_clips)
+    scores_reduced = Variable(torch.zeros(N_, N_).cuda())
+    assert N_ == len(num_caps)
+    # for i in range(N_):
+      # mask[sum(num_clips[0:i]):sum(num_clips[0:i+1]),
+      #      sum(num_caps[0:i]): sum(num_caps[0:i+1])] = 1
+    for i in range(N_):
+      clip_start, clip_end = sum(num_clips[0:i]), sum(num_clips[0:i+1])
+      for j in range(N_):
+        cap_start, cap_end   = sum(num_caps[0:j]), sum(num_caps[0:j+1])
+        scores_reduced[i, j] = scores[clip_start:clip_end, cap_start:cap_end].mean()
+
+    diagonal = scores_reduced.diag().view(N_, 1)
+    d1 = diagonal.expand_as(scores_reduced)
+    d2 = diagonal.t().expand_as(scores_reduced)
 
     # compare every diagonal score to scores in its column
     # caption retrieval
-    cost_s = (self.margin + scores - d1).clamp(min=0)
+    cost_s  = (self.margin + scores_reduced - d1).clamp(min=0)
     # compare every diagonal score to scores in its row
     # image retrieval
-    cost_im = (self.margin + scores - d2).clamp(min=0)
+    cost_im = (self.margin + scores_reduced - d2).clamp(min=0)
 
-    # clear diagonals
-    mask = torch.zeros(scores.shape)
-    N_ = len(num_clips)
-    assert N_ == len(num_caps)
-    for i in range(N_):
-      mask[sum(num_clips[0:i]):sum(num_clips[0:i+1]), sum(num_caps[0:i]):sum(num_caps[0:i+1])] = 1
-
-    mask = mask > 0.5
+    mask = torch.eye(scores_reduced.size(0)) > .5
     I = Variable(mask)
     if torch.cuda.is_available():
       I = I.cuda()

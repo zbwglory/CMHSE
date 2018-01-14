@@ -166,7 +166,7 @@ class VSE(object):
     self.criterion = ContrastiveLoss(margin=opt.margin,
                      measure=opt.measure,
                      max_violation=opt.max_violation)
-    self.criterion_no_correspond = ContrastiveLoss_no_correspond(margin=opt.margin,
+    self.criterion_group = GroupWiseContrastiveLoss(margin=opt.margin,
                      measure=opt.measure,
                      max_violation=opt.max_violation)
     self.criterion_center = CenterLoss(margin=opt.margin,
@@ -196,8 +196,8 @@ class VSE(object):
     self.txt_enc.load_state_dict(state_dict[1])
     self.vid_seq_enc.load_state_dict(state_dict[2])
     self.txt_seq_enc.load_state_dict(state_dict[3])
-    # self.fc_visual.load_state_dict(state_dict[4])
-    # self.fc_language.load_state_dict(state_dict[5])
+    self.fc_visual.load_state_dict(state_dict[4])
+    self.fc_language.load_state_dict(state_dict[5])
 
   def train_start(self):
     """switch to train mode
@@ -257,10 +257,10 @@ class VSE(object):
     self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
     return loss
 
-  def forward_loss_no_correspond(self, clip_emb, cap_emb, num_clips, num_caps, name, **kwargs):
+  def forward_loss_group(self, clip_emb, cap_emb, num_clips, num_caps, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
     """
-    loss = self.criterion_no_correspond(clip_emb, cap_emb, num_clips, num_caps)
+    loss = self.criterion_group(clip_emb, cap_emb, num_clips, num_caps)
     self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
     return loss
 
@@ -294,10 +294,9 @@ class VSE(object):
 
     loss_1 = self.forward_loss(vid_emb, para_emb, '_vid')
     if opts.no_correspond:
-      loss_2 = self.forward_loss_no_correspond(clip_emb, cap_emb, num_clips, num_caps, '_clip')
+      loss_2 = self.forward_loss_group(clip_emb, cap_emb, num_clips, num_caps, '_clip')
     else:
-      # loss_2 = self.forward_loss(clip_emb, cap_emb, '_clip')
-      loss_2 = 0
+      loss_2 = self.forward_loss(clip_emb, cap_emb, '_clip')
 
     loss_3 = self.forward_loss(vid_context, para_context, '_context')
     if opts.center_loss:

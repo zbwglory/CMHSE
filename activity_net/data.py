@@ -2,6 +2,7 @@ import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
 import os
+import os.path as osp
 import nltk
 from PIL import Image
 import numpy as np
@@ -10,6 +11,7 @@ import h5py
 import copy
 from IPython import embed
 
+this_dir = osp.abspath(osp.join(osp.dirname(__file__), '..'))
 class PrecompDataset(data.Dataset):
   """
   Load precomputed captions and image features
@@ -18,16 +20,16 @@ class PrecompDataset(data.Dataset):
 
   def __init__(self, data_path, data_split, vocab, opt):
     self.vocab = vocab
-    loc = './data/captions/'
+    json_path = osp.join(this_dir, 'data', 'captions', '{}.json'.format(data_split) )
 
     # Captions
-    self.jsondict = jsonmod.load(open(loc+'{}.json'.format(data_split), 'r'))
+    self.jsondict = jsonmod.load(open(json_path, 'r'))
     self.ann_id = {}
     for i, keys in enumerate(self.jsondict.keys()):
       self.ann_id[i] = keys
 
     # Image features
-    self.video_emb = h5py.File('./data/sub_activitynet_v1-3.c3d.hdf5-'+str(opt.data_switch))
+    self.video_emb = h5py.File(osp.join(this_dir, 'data', 'sub_activitynet_v1-3.c3d.hdf5-'+str(opt.data_switch)))
 
     self.length = len(self.ann_id)
 
