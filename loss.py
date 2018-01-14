@@ -28,18 +28,17 @@ class GroupWiseContrastiveLoss(nn.Module):
     scores = self.sim(im, s)
 
     # generate mask
-    mask = torch.zeros(scores.shape)
     N_ = len(num_clips)
     scores_reduced = Variable(torch.zeros(N_, N_).cuda())
     assert N_ == len(num_caps)
-    # for i in range(N_):
-      # mask[sum(num_clips[0:i]):sum(num_clips[0:i+1]),
-      #      sum(num_caps[0:i]): sum(num_caps[0:i+1])] = 1
     for i in range(N_):
       clip_start, clip_end = sum(num_clips[0:i]), sum(num_clips[0:i+1])
       for j in range(N_):
         cap_start, cap_end   = sum(num_caps[0:j]), sum(num_caps[0:j+1])
-        scores_reduced[i, j] = scores[clip_start:clip_end, cap_start:cap_end].mean()
+        if self.max_violation:
+          scores_reduced[i, j] = scores[clip_start:clip_end, cap_start:cap_end].max()
+        else:
+          scores_reduced[i, j] = scores[clip_start:clip_end, cap_start:cap_end].mean()
 
     diagonal = scores_reduced.diag().view(N_, 1)
     d1 = diagonal.expand_as(scores_reduced)

@@ -87,7 +87,7 @@ def main():
   parser.add_argument('--center_loss', default=True, type=bool)
   parser.add_argument('--identity', default=True, type=bool)
   parser.add_argument('--tune_seq', default=True, type=bool)
-  parser.add_argument('--no_correspond', default=False, type=bool)
+  parser.add_argument('--no_correspond', default=True, type=bool)
   parser.add_argument('--other_loss_weight', default=1, type=float)
 
   opt = parser.parse_args()
