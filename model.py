@@ -111,6 +111,7 @@ class EncoderText(nn.Module):
     self.init_weights()
 
   def init_weights(self):
+#    self.embed.weight.data.uniform_(-0.1, 0.1)
     self.embed.weight.data = torch.from_numpy(np.load('vocab/anet_precomp_w2v.npz')['arr_0'].astype(float)).float()
 
   def forward(self, x, lengths):

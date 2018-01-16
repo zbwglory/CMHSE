@@ -29,7 +29,7 @@ class PrecompDataset(data.Dataset):
       self.ann_id[i] = keys
 
     # Image features
-    self.video_emb = h5py.File(osp.join(this_dir, 'data', 'sub_activitynet_v1-3.c3d.hdf5-'+str(opt.data_switch)))
+    self.video_emb = h5py.File(osp.join(this_dir, 'data', 'sub_activitynet_v1-3.c3d.hdf5-'+str(opt.data_switch)),'r',swmr=True)
 
     self.length = len(self.ann_id)
 

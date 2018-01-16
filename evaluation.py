@@ -3,10 +3,10 @@ import os
 import pickle
 
 import numpy
-from data import get_test_loader
+from activity_net.data import get_test_loader
 import time
 import numpy as np
-from vocab import Vocabulary  # NOQA
+from anet_vocab import Vocabulary  # NOQA
 import torch
 from model import VSE
 from collections import OrderedDict

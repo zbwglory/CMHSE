@@ -7,7 +7,7 @@ import torch
 
 import activity_net.data as data
 # import didemo.data as data
-from vocab import Vocabulary
+from anet_vocab import Vocabulary
 from model import VSE
 from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter, t2v, i2p
 
@@ -84,10 +84,10 @@ def main():
             help='weight of center loss')
 
   parser.add_argument('--data_switch', default=0, type=int)
-  parser.add_argument('--center_loss', default=True, type=bool)
-  parser.add_argument('--identity', default=True, type=bool)
-  parser.add_argument('--tune_seq', default=True, type=bool)
-  parser.add_argument('--no_correspond', default=True, type=bool)
+  parser.add_argument('--center_loss', action='store_true')
+  parser.add_argument('--identity', action='store_true')
+  parser.add_argument('--tune_seq', action='store_true')
+  parser.add_argument('--no_correspond', action='store_true')
   parser.add_argument('--other_loss_weight', default=1, type=float)
 
   opt = parser.parse_args()
@@ -99,8 +99,9 @@ def main():
   tb_logger.configure(opt.logger_name, flush_secs=5)
 
   # Load Vocabulary Wrapper
-  vocab = pickle.load(open(os.path.join(
-    opt.vocab_path, '%s_vocab.pkl' % opt.data_name), 'rb'))
+  vocab_path = os.path.join(opt.vocab_path, '%s_vocab_no_emb.pkl' % opt.data_name)
+  print (vocab_path)
+  vocab = pickle.load(open(vocab_path, 'rb'))
   opt.vocab_size = len(vocab)
 
   # Load data loaders
@@ -210,9 +211,9 @@ def validate(opt, val_loader, model):
     model, val_loader, opt.log_step, logging.info)
 
   # caption retrieval
-  # vid_clip_rep, _, _ = i2t(clip_embs, cap_embs, measure=opt.measure)
-  # # image retrieval
-  # cap_clip_rep, _, _ = t2i(clip_embs, cap_embs, measure=opt.measure)
+  vid_clip_rep, _, _ = i2t(clip_embs, cap_embs, measure=opt.measure)
+  # image retrieval
+  cap_clip_rep, _, _ = t2i(clip_embs, cap_embs, measure=opt.measure)
 
   # caption retrieval
   vid_seq_rep, _, _  = i2t(vid_seq_embs, para_seq_embs, measure=opt.measure)
@@ -222,10 +223,10 @@ def validate(opt, val_loader, model):
   # sum of recalls to be used for early stopping
   currscore = vid_seq_rep['sum'] + para_seq_rep['sum']
 
-  # logging.info("Clip to Sent: %.1f, %.1f, %.1f, %.1f, %.1f" %
-  #        (vid_clip_rep['r1'], vid_clip_rep['r5'], vid_clip_rep['r10'], vid_clip_rep['medr'], vid_clip_rep['meanr']))
-  # logging.info("Sent to Clip: %.1f, %.1f, %.1f, %.1f, %.1f" %
-  #        (cap_clip_rep['r1'], cap_clip_rep['r5'], cap_clip_rep['r10'], cap_clip_rep['medr'], cap_clip_rep['meanr']))
+  logging.info("Clip to Sent: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (vid_clip_rep['r1'], vid_clip_rep['r5'], vid_clip_rep['r10'], vid_clip_rep['medr'], vid_clip_rep['meanr']))
+  logging.info("Sent to Clip: %.1f, %.1f, %.1f, %.1f, %.1f" %
+         (cap_clip_rep['r1'], cap_clip_rep['r5'], cap_clip_rep['r10'], cap_clip_rep['medr'], cap_clip_rep['meanr']))
   logging.info("Video to Paragraph: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (vid_seq_rep['r1'], vid_seq_rep['r5'], vid_seq_rep['r10'], vid_seq_rep['medr'], vid_seq_rep['meanr']))
   logging.info("Paragraph to Video: %.1f, %.1f, %.1f, %.1f, %.1f" %
@@ -233,8 +234,8 @@ def validate(opt, val_loader, model):
   logging.info("Currscore: %.1f" % (currscore))
 
   # record metrics in tensorboard
-  # LogReporter(tb_logger, vid_clip_rep, model.Eiters, 'clip')
-  # LogReporter(tb_logger, cap_clip_rep, model.Eiters, 'clipi')
+  LogReporter(tb_logger, vid_clip_rep, model.Eiters, 'clip')
+  LogReporter(tb_logger, cap_clip_rep, model.Eiters, 'clipi')
   LogReporter(tb_logger, vid_seq_rep, model.Eiters, 'seq')
   LogReporter(tb_logger, para_seq_rep, model.Eiters, 'seqi')
   tb_logger.log_value('rsum', currscore, step=model.Eiters)

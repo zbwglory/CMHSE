@@ -9,8 +9,6 @@ import os
 from tqdm import tqdm
 
 annotations = {
-    'coco': ['annotations/captions_train2014.json',
-             'annotations/captions_val2014.json'],
     'anet': ['/data2/bwzhang/anet_img/captions/train.json', '/data2/bwzhang/anet_img/captions/val_1.json']
 }
 
@@ -38,34 +36,6 @@ class Vocabulary(object):
 
     def __len__(self):
         return len(self.word2idx)
-
-
-def from_coco_json(path):
-    coco = COCO(path)
-    ids = coco.anns.keys()
-    captions = []
-    for i, idx in enumerate(ids):
-        captions.append(str(coco.anns[idx]['caption']))
-
-    return captions
-
-
-def from_flickr_json(path):
-    dataset = json.load(open(path, 'r'))['images']
-    captions = []
-    for i, d in enumerate(dataset):
-        captions += [str(x['raw']) for x in d['sentences']]
-
-    return captions
-
-
-def from_txt(txt):
-    captions = []
-    with open(txt, 'rb') as f:
-        for line in f:
-            captions.append(line.strip())
-    return captions
-
 
 def build_vocab(data_path, data_name, jsons, threshold):
     global glove
