@@ -15,18 +15,17 @@ import preprocess_feature
 import os.path as osp
 
 this_dir = osp.abspath(osp.join(osp.dirname(__file__), '..'))
-def prepare_videos(h5file, vidinfo, seg_num, sample_rate=5):
+def prepare_videos(vidinfo, seg_num, sample_rate=5):
   cur_featname = vidinfo.feat_filename.split('/')[-1]
-  vidfeat = h5file[cur_featname].value
   slot = []
   for i in range(seg_num):
     start_frame = vidinfo.img_length / vidinfo.vid_length * sample_rate * i
     end_frame = min(vidinfo.img_length / vidinfo.vid_length * sample_rate * (i+1), vidinfo.img_length)
     start_feat_frame = int(start_frame )
     end_feat_frame = int(end_frame )
-    slot.append(vidfeat[start_feat_frame:end_feat_frame+1, :])
+    slot.append((start_feat_frame,end_feat_frame))
 
-  return slot
+  return slot, cur_featname
 
 class PrecompDataset(data.Dataset):
   def __init__(self, data_path, data_split, vocab, opt):
@@ -34,9 +33,9 @@ class PrecompDataset(data.Dataset):
     self.json_compiled = json_data(data_split)
     self.ann_id = {}
     for i, keys in enumerate(self.json_compiled.keys()):
-      self.ann_id[i] = keys
+      self.ann_id[i] = str(keys)
     self.length = len(self.ann_id)
-    self.h5file  = h5py.File(osp.join(this_dir, 'data', 'didemo_incep_v3.h5'),'r')
+    self.h5file  = h5py.File(osp.join(this_dir, 'data', 'didemo_incep_v3.h5'),'r', swmr=True)
     self.vidinfo = np.load(osp.join(this_dir, 'data', 'didemo', '{}_vidinfo_didemo.npz'.format(data_split)))['vidinfo'].item()
 
   def __len__(self):
@@ -45,28 +44,34 @@ class PrecompDataset(data.Dataset):
   def __getitem__(self, index):
     # handle the image redundancy
     cur_vid = self.ann_id[index]
+    print cur_vid, index
     cur_vidinfo = self.vidinfo[cur_vid]
     cur_jsoninfo = self.json_compiled[cur_vid]
-    feat_data = prepare_videos(self.h5file, cur_vidinfo, cur_jsoninfo['num_segments'])
+    slot, cur_featname = prepare_videos(cur_vidinfo, cur_jsoninfo['num_segments'])
+    feat_data = self.h5file[cur_featname].value
+    feat_data = torch.Tensor(feat_data)
     captions = self.json_compiled[cur_vid]['description']
     # start_t = time.time()
-    clips, captions, videos, paragraphs, lengths_clip, lengths_cap, num_clip, num_caption = self.img_cap_feat_combine(feat_data, captions, cur_vid)
+    clips, captions, videos, paragraphs, lengths_clip, lengths_cap, num_clip, num_caption = self.img_cap_feat_combine(feat_data, slot, captions, cur_vid)
     # print("combined feature time: %.2f" % (time.time() - start_t) )
     return clips, captions, videos, paragraphs, lengths_clip, lengths_cap, num_clip, num_caption, index
 
-  def img_cap_feat_combine(self, feats, captions, cur_vid, max_frames=140.0):
+  def img_cap_feat_combine(self, feats, slot, captions, cur_vid, max_frames=140.0):
     #### Videos ####
+    #start_t = time.time()
     clips = []
-    for seg_id in self.json_compiled[cur_vid]['times']:
+    len_feat = feats.shape[0]
+    for i, seg_id in enumerate(self.json_compiled[cur_vid]['times']):
       start_time = seg_id[0]
       end_time = seg_id[1]
-      cur_feat = torch.Tensor(np.concatenate(feats[start_time: end_time + 1]))
-      try:
-        cur_length = cur_feat.shape[0]
-      except:
-        start_time = 0
-        cur_feat = torch.Tensor(np.concatenate(feats[start_time: end_time + 1]))
-        cur_length = cur_feat.shape[0]
+      slot_start = slot[start_time][0]
+      slot_end = slot[end_time][1]
+      if slot_start <= len_feat and slot_end <= len_feat:
+        cur_feat = feats[slot_start: slot_end]
+      else:
+        print (cur_vid, slot_start, slot_end, len_feat)
+        cur_feat = feats
+      cur_length = cur_feat.shape[0]
       if cur_length > max_frames:
         ind = np.arange(0, cur_feat.shape[0], cur_feat.shape[0] / max_frames).astype(int).tolist()
         cur_feat = cur_feat[ind, :]
@@ -80,11 +85,12 @@ class PrecompDataset(data.Dataset):
     #   clips.append(cur_feat)
 
     lengths_clip = [len(vid) for vid in clips]
-    videos = torch.Tensor(np.concatenate(feats))
-    if videos.shape[0] > max_frames:
-      ind = np.arange(0, videos.shape[0], videos.shape[0] / max_frames).astype(int).tolist()
-      videos = videos[ind, :]
-    # print("video feature time: %.2f" % (time.time() - start_t))
+    if len_feat > max_frames:
+      ind = np.arange(0, len_feat, len_feat / max_frames).astype(int).tolist()
+      videos = feats[ind, :]
+    else:
+      videos = feat
+    #print("video feature time: %.2f" % (time.time() - start_t))
 
     #### Captions ####
     vocab = self.vocab
@@ -113,6 +119,7 @@ class PrecompDataset(data.Dataset):
 def collate_fn(data_batch):
   _clips, _captions, _videos, _paragraphs, _lengths_clip, _lengths_cap, num_clips, num_captions, index = zip(*data_batch)
 
+  #start_t = time.time()
   lengths_clip = torch.cat(_lengths_clip, 0)
   clips = torch.zeros(len(lengths_clip), lengths_clip.max(), 2048)
   _cur_ind = 0
@@ -127,6 +134,8 @@ def collate_fn(data_batch):
   for i, vid in enumerate(_videos):
     end = lengths_video[i]
     videos[i, :end, :] = vid[:end, : ]
+
+  #print("video collate time: %.2f" % (time.time() - start_t))
 
   lengths_cap = torch.cat(_lengths_cap, 0)
   captions = torch.zeros(len(lengths_cap), lengths_cap.max()).long()
