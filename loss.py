@@ -152,3 +152,18 @@ class CenterLoss(nn.Module):
   def forward(self, clips, videos, caps, paragraphs, num_clips, num_caps):
       return self.forward_loss(clips, videos, num_clips) + self.forward_loss(caps, paragraphs, num_caps)
 
+class EuclideanLoss(nn.Module):
+  def __init__(self):
+    super(EuclideanLoss, self).__init__()
+
+  def forward_loss(self, clip_remap, clip_emb):
+    # compute image-sentence score matrix
+    score = clip_remap - clip_emb
+
+    score = torch.sqrt((score**2).sum(dim=1)).sum(0)
+
+    return score
+
+  def forward(self, clip_remap, clip_emb):
+      return self.forward_loss(clip_remap, clip_emb)
+

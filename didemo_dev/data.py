@@ -20,36 +20,40 @@ class PrecompDataset(data.Dataset):
 
   def __init__(self, data_path, data_split, vocab, opt):
     self.vocab = vocab
-    json_path = osp.join(this_dir, 'data', 'captions', '{}.json'.format(data_split) )
+    json_path = osp.join(this_dir, 'didemo_dev', '{}.json'.format(data_split) )
 
     # Captions
     self.jsondict = jsonmod.load(open(json_path, 'r'))
     self.ann_id = {}
     for i, keys in enumerate(self.jsondict.keys()):
-      self.ann_id[i] = keys
+      self.ann_id[i] = str(keys) 
 
     # Image features
-    self.video_emb = h5py.File(osp.join(this_dir, 'data', 'sub_activitynet_v1-3.c3d.hdf5-'+str(opt.data_switch)))
+    #self.video_emb = h5py.File(osp.join(this_dir, 'data', 'didemo_incep_v3.h5'+str(opt.data_switch)),'r')
+    self.video_emb = h5py.File(osp.join(this_dir, 'data', 'didemo_incep_v3.h5'),'r')
 
     self.length = len(self.ann_id)
 
   def img_cap_feat_combine(self, video_feat, caption_feat, cur_vid):
 
     #### Videos ####
-    frame_duration = self.jsondict[cur_vid]['duration']
-    segment_number = len(self.jsondict[cur_vid]['timestamps'])
+    segment_number = len(self.jsondict[cur_vid]['times'])
     video_feat_len = video_feat.shape[0]
 
     clips = []
 
     for seg_id in range(segment_number):
-      picked_segment = self.jsondict[cur_vid]['timestamps'][seg_id]
-      start_frame = int(np.floor(picked_segment[0] / frame_duration * video_feat_len))
-      end_frame = int(np.ceil(picked_segment[1] / frame_duration * video_feat_len))
+      picked_segment = self.jsondict[cur_vid]['times'][seg_id]
+      start_frame = picked_segment[0]
+      end_frame = picked_segment[1]
 
-      if start_frame > end_frame:end_frame = start_frame
+      if start_frame > video_feat_len or end_frame > video_feat_len:
+          print cur_vid, start_frame, end_frame, video_feat_len
+          end_frame=video_feat.shape[0] 
+          start_frame=0 
 
       current_feat = video_feat[start_frame: end_frame+1, :]
+
       max_frames = 140.0
       if current_feat.shape[0] > max_frames:
         ind = np.arange(0, current_feat.shape[0], current_feat.shape[0]/max_frames).astype(int).tolist()
@@ -91,9 +95,10 @@ class PrecompDataset(data.Dataset):
   def __getitem__(self, index):
     # handle the image redundancy
     cur_vid = self.ann_id[index]
-    image_data = self.video_emb[cur_vid]['c3d_features'].value
+    print cur_vid,index
+    image_data = self.video_emb[cur_vid+'.npz'].value
     image = torch.Tensor(image_data)
-    caption_json = self.jsondict[cur_vid]['sentences']
+    caption_json = self.jsondict[cur_vid]['description']
 
     clips, captions, video, paragraph, lengths_clip, lengths_cap, \
       num_clip, num_caption = self.img_cap_feat_combine(image, caption_json, cur_vid)
@@ -108,7 +113,7 @@ def collate_fn(data_batch):
 
   # Merge images
   lengths_clip = torch.cat(_lengths_clip, 0)
-  clips = torch.zeros(len(lengths_clip), lengths_clip.max(), 500)
+  clips = torch.zeros(len(lengths_clip), lengths_clip.max(), 2048)
   _cur_ind = 0
   for i, _vid_seg in enumerate(_clips):
     for j, vid in enumerate(_vid_seg):
@@ -117,7 +122,7 @@ def collate_fn(data_batch):
       _cur_ind += 1
 
   lengths_video = torch.Tensor([len(x) for x in _video]).long()
-  videos = torch.zeros(len(_video), lengths_video.max(), 500)
+  videos = torch.zeros(len(_video), lengths_video.max(), 2048)
   for i, vid in enumerate(_video):
     end = lengths_video[i]
     videos[i, :end, :] = vid[:end, : ]
@@ -155,9 +160,9 @@ def get_precomp_loader(data_path, data_split, vocab, opt, batch_size=100,
 def get_loaders(data_name, vocab, batch_size, workers, opt):
   dpath = os.path.join(opt.data_path, data_name)
   if opt.data_name.endswith('_precomp'):
-    train_loader = get_precomp_loader(dpath, 'train', vocab, opt,
-                      batch_size, True, workers)
-    val_loader   = get_precomp_loader(dpath, 'val_1', vocab, opt,
+    train_loader = get_precomp_loader(dpath, 'train_data_bwzhang', vocab, opt,
+                      batch_size, False, workers)
+    val_loader   = get_precomp_loader(dpath, 'val_data_bwzhang', vocab, opt,
                     batch_size, False, workers)
   return train_loader, val_loader
 

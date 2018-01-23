@@ -65,6 +65,7 @@ class Seq2Seq(nn.Module):
 
     return outputs
 
+
 class Attention(nn.Module):
   def __init__(self, embedding_features, rnn_features, rnn_bidirectional=False):
     super(Attention, self).__init__()
@@ -144,7 +145,7 @@ class Attention(nn.Module):
       raise
 
     _, _indices = torch.sort(indices, 0)
-    return attended.sum(1,True).squeeze(1)[_indicies.cuda()], all_att
+    return attended.sum(1,True).squeeze(1)[_indices.cuda()], all_att
 
   def _list_to_bytemask(self,l):
     mask = torch.FloatTensor(len(l),l[0]).fill_(1)

@@ -13,6 +13,9 @@ from IPython import embed
 
 from layers import *
 from loss import *
+from decoder.layers_v2 import *
+from decoder.model_v2 import *
+from decoder.loss import *
 
 def EncoderImage(data_name, img_dim, embed_size,
                  finetune=False, dropout=0.5,
@@ -53,6 +56,7 @@ class EncoderSequence(nn.Module):
     # normalization in the joint embedding space
     return F.normalize(outputs)
 
+
 class EncoderImagePrecomp(nn.Module):
   def __init__(self, img_dim, embed_size, dropout=0,
       no_imgnorm=False, bidirectional=False, rnn_type='maxout'):
@@ -87,7 +91,7 @@ class EncoderImagePrecomp(nn.Module):
 
 class EncoderText(nn.Module):
   def __init__(self, vocab_size, word_dim, embed_size,
-      num_layers, dropout=0, bidirectional=False, rnn_type='maxout'):
+      num_layers, dropout=0, bidirectional=False, rnn_type='maxout', data_name='anet_precomp'):
     super(EncoderText, self).__init__()
     self.embed_size = embed_size
     self.bidirectional = bidirectional
@@ -108,11 +112,11 @@ class EncoderText(nn.Module):
     else:
       raise ValueError('Unsupported RNN type')
 
-    self.init_weights()
+    self.init_weights(data_name)
 
-  def init_weights(self):
+  def init_weights(self, data_name):
 #    self.embed.weight.data.uniform_(-0.1, 0.1)
-    self.embed.weight.data = torch.from_numpy(np.load('vocab/anet_precomp_w2v.npz')['arr_0'].astype(float)).float()
+    self.embed.weight.data = torch.from_numpy(np.load('vocab/{}_w2v.npz'.format(data_name))['arr_0'].astype(float)).float()
 
   def forward(self, x, lengths):
     # Embed word ids to vectors
@@ -146,11 +150,15 @@ class VSE(object):
     self.clip_enc = EncoderImage(opt.data_name, opt.img_dim, opt.img_first_size, dropout=opt.img_first_dropout,
                   no_imgnorm=opt.no_imgnorm, rnn_type=opt.rnn_type)
     self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim, opt.cap_first_size, opt.num_layers, dropout=opt.cap_first_dropout,
-                  rnn_type=opt.rnn_type)
+                  rnn_type=opt.rnn_type, data_name = opt.data_name)
     self.vid_seq_enc = EncoderSequence(opt.img_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
     self.txt_seq_enc = EncoderSequence(opt.cap_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
+    self.vid_seq_dec = DecoderSequence(opt.embed_size, opt.img_first_size,
+                  rnn_type=opt.decode_rnn_type)
+    self.txt_seq_dec = DecoderSequence(opt.embed_size, opt.cap_first_size,
+                  rnn_type=opt.decode_rnn_type)
 
     self.fc_visual = FC(opt.embed_size, opt.img_first_size, opt.identity)
     self.fc_language = FC(opt.embed_size, opt.cap_first_size, opt.identity)
@@ -161,6 +169,8 @@ class VSE(object):
       self.txt_seq_enc.cuda()
       self.fc_visual.cuda()
       self.fc_language.cuda()
+      self.vid_seq_dec.cuda()
+      self.txt_seq_dec.cuda()
       cudnn.benchmark = True
 
     # Loss and Optimizer
@@ -173,6 +183,7 @@ class VSE(object):
     self.criterion_center = CenterLoss(margin=opt.margin,
                      measure=opt.measure,
                      max_violation=opt.max_violation, tune_center=opt.tune_seq)
+    self.criterion_Euclid_Distance = EuclideanLoss()
 
     params = list(self.txt_enc.parameters())
     params += list(self.clip_enc.parameters())
@@ -180,6 +191,8 @@ class VSE(object):
     params += list(self.txt_seq_enc.parameters())
     params += list(self.fc_visual.parameters())
     params += list(self.fc_language.parameters())
+    params += list(self.vid_seq_dec.parameters())
+    params += list(self.txt_seq_dec.parameters())
     self.params = params
 
     self.optimizer = torch.optim.Adam(params, lr=opt.learning_rate)
@@ -189,7 +202,8 @@ class VSE(object):
   def state_dict(self):
     state_dict = [self.clip_enc.state_dict(), self.txt_enc.state_dict(), \
                   self.vid_seq_enc.state_dict(), self.txt_seq_enc.state_dict(), \
-                  self.fc_visual.state_dict(), self.fc_language.state_dict()]
+                  self.fc_visual.state_dict(), self.fc_language.state_dict(), \
+                  self.vid_seq_dec.state_dict(), self.txt_seq_dec.state_dict()]
     return state_dict
 
   def load_state_dict(self, state_dict):
@@ -199,6 +213,8 @@ class VSE(object):
     self.txt_seq_enc.load_state_dict(state_dict[3])
     self.fc_visual.load_state_dict(state_dict[4])
     self.fc_language.load_state_dict(state_dict[5])
+    self.vid_seq_dec.load_state_dict(state_dict[6])
+    self.txt_seq_dec.load_state_dict(state_dict[7])
 
   def train_start(self):
     """switch to train mode
@@ -209,6 +225,8 @@ class VSE(object):
     self.txt_seq_enc.train()
     self.fc_visual.train()
     self.fc_language.train()
+    self.vid_seq_dec.train()
+    self.txt_seq_dec.train()
 
   def val_start(self):
     """switch to evaluate mode
@@ -219,6 +237,8 @@ class VSE(object):
     self.txt_seq_enc.eval()
     self.fc_visual.eval()
     self.fc_language.eval()
+    self.vid_seq_dec.eval()
+    self.txt_seq_dec.eval()
 
   def forward_emb(self, clips, captions, lengths_clip, lengths_cap):
     clips   = Variable(clips)
@@ -251,6 +271,36 @@ class VSE(object):
 
     return vid_emb, para_emb
 
+  def remap_emb(self, vid_emb, para_emb, num_clips, num_caps, clip_emb=None, cap_emb=None):
+    vid_reshape_emb = Variable(torch.zeros(len(num_clips), max(num_clips), vid_emb.shape[1])).cuda()
+    para_reshape_emb = Variable(torch.zeros(len(num_caps),  max(num_caps),  para_emb.shape[1])).cuda()
+
+    if clip_emb == None and cap_emb == None:
+        for i, end_place in enumerate(num_clips):
+            vid_reshape_emb[i,0,:] = vid_emb[i]
+            for k in range(1, end_place):
+                vid_reshape_emb[i, k, :] = clip_emb[i,k-1,:]
+
+        for i, end_place in enumerate(num_caps):
+          para_reshape_emb[i,0,:] = para_emb[i]
+          for k in range(1, end_place):
+              para_reshape_emb[i, k, :] = cap_emb[i,k-1,:]
+    else:
+        for i, end_place in enumerate(num_clips):
+            for k in range(end_place):
+                vid_reshape_emb[i, k, :] = vid_emb[i]
+
+        for i, end_place in enumerate(num_caps):
+          for k in range(end_place):
+              para_reshape_emb[i, k, :] = para_emb[i,:]
+
+    vid_emb  = self.vid_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
+    para_emb = self.txt_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
+
+    return vid_emb, para_emb
+
+
+
   def forward_loss(self, clip_emb, cap_emb, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
     """
@@ -272,6 +322,13 @@ class VSE(object):
     self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
     return loss
 
+  def forward_remap_loss(self, vid_emb, clip_emb, name, **kwargs):
+    """Compute the loss given pairs of image and caption embeddings
+    """
+    loss = self.criterion_Euclid_Distance(vid_emb, clip_emb)
+    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
+    return loss
+
   def train_emb(self, opts, clips, captions, videos, paragraphs,
       lengths_clip, lengths_cap, lengths_video, lengths_paragraph,
       num_clips, num_caps, ind, *args):
@@ -285,6 +342,8 @@ class VSE(object):
     clip_emb, cap_emb = self.forward_emb(clips, captions, lengths_clip, lengths_cap)
     vid_context, para_context = self.forward_emb(videos, paragraphs, lengths_video, lengths_paragraph)
     vid_emb, para_emb = self.structure_emb(clip_emb, cap_emb, num_clips, num_caps, vid_context, para_context)
+    if opts.remap_term:
+        clip_remap, cap_remap = self.remap_emb(vid_emb, para_emb, num_clips, num_caps)
 
     if opts.center_loss:
       vid_reproject  = self.fc_visual(vid_emb)
@@ -307,7 +366,12 @@ class VSE(object):
 
     loss_5 = self.forward_loss(vid_emb, vid_emb, '_ex_vid') + self.forward_loss(para_emb, para_emb, '_ex_para')
 
-    loss = loss_1 + (loss_2 + loss_3 + opts.center_loss_weight * loss_4 + loss_5) * opts.other_loss_weight
+    if opts.remap_term:
+        loss_remap = self.forward_remap_loss(clip_remap, clip_emb, '_remap_clip') + self.forward_remap_loss(cap_remap, cap_emb, '_remap_cap')
+    else:
+        loss_remap = 0
+
+    loss = loss_1 + (loss_2 + loss_3 + opts.center_loss_weight * loss_4 + loss_5 + loss_remap) * opts.other_loss_weight
 
     # compute gradient and do SGD step
     loss.backward()
