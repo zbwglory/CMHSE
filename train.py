@@ -89,6 +89,8 @@ def main():
   parser.add_argument('--tune_seq', action='store_true')
   parser.add_argument('--no_correspond', action='store_true')
   parser.add_argument('--other_loss_weight', default=1, type=float)
+  parser.add_argument('--decode_rnn_type', default='seq2seq')
+  parser.add_argument('--remap_term', action='store_true')
 
   opt = parser.parse_args()
   print (opt)
@@ -99,7 +101,7 @@ def main():
   tb_logger.configure(opt.logger_name, flush_secs=5)
 
   # Load Vocabulary Wrapper
-  vocab_path = os.path.join(opt.vocab_path, '%s_vocab_no_emb.pkl' % opt.data_name)
+  vocab_path = os.path.join(opt.vocab_path, '%s_vocab.pkl' % opt.data_name)
   print (vocab_path)
   vocab = pickle.load(open(vocab_path, 'rb'))
   opt.vocab_size = len(vocab)
@@ -169,6 +171,7 @@ def train(opt, train_loader, model, epoch, val_loader):
 
   end = time.time()
   for i, train_data in enumerate(train_loader):
+    #embed()
     # measure data loading time
     data_time.update(time.time() - end)
 
