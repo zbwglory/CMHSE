@@ -275,7 +275,7 @@ class VSE(object):
     vid_reshape_emb = Variable(torch.zeros(len(num_clips), max(num_clips), vid_emb.shape[1])).cuda()
     para_reshape_emb = Variable(torch.zeros(len(num_caps),  max(num_caps),  para_emb.shape[1])).cuda()
 
-    if clip_emb == None and cap_emb == None:
+    if clip_emb != None and cap_emb != None:
         for i, end_place in enumerate(num_clips):
             vid_reshape_emb[i,0,:] = vid_emb[i]
             for k in range(1, end_place):
