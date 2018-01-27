@@ -9,7 +9,7 @@ import os
 from tqdm import tqdm
 
 annotations = {
-    'anet': ['/data2/bwzhang/anet_img/captions/train.json', '/data2/bwzhang/anet_img/captions/val_1.json']
+    'anet': ['/data2/bwzhang/anet_img/captions/train.json', '/data2/bwzhang/anet_img/captions/val_1.json', '/data2/bwzhang/anet_img/captions/val_2.json']
 }
 
 
@@ -80,7 +80,7 @@ def build_vocab(data_path, data_name, jsons, threshold):
 
 def main(data_path, data_name):
     vocab = build_vocab(data_path, data_name, jsons=annotations, threshold=1)
-    with open('./vocab/%s_precomp_vocab.pkl' % data_name, 'wb') as f:
+    with open('./vocab/%s_precomp_vocab_total.pkl' % data_name, 'wb') as f:
         pickle.dump(vocab, f, pickle.HIGHEST_PROTOCOL)
     print("Saved vocabulary file to ", './vocab/%s_precomp_vocab.pkl' % data_name)
 

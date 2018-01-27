@@ -13,8 +13,8 @@ from IPython import embed
 
 from layers import *
 from loss import *
-from decoder.layers_v2 import *
-from decoder.model_v2 import *
+from decoder.layers import *
+from decoder.model import *
 from decoder.loss import *
 
 def EncoderImage(data_name, img_dim, embed_size,
@@ -115,7 +115,6 @@ class EncoderText(nn.Module):
     self.init_weights(data_name)
 
   def init_weights(self, data_name):
-#    self.embed.weight.data.uniform_(-0.1, 0.1)
     self.embed.weight.data = torch.from_numpy(np.load('vocab/{}_w2v.npz'.format(data_name))['arr_0'].astype(float)).float()
 
   def forward(self, x, lengths):
@@ -271,28 +270,20 @@ class VSE(object):
 
     return vid_emb, para_emb
 
-  def remap_emb(self, vid_emb, para_emb, num_clips, num_caps, clip_emb=None, cap_emb=None):
+  def reconstruct_emb(self, vid_emb, para_emb, num_clips, num_caps, clip_emb=None, cap_emb=None):
     vid_reshape_emb = Variable(torch.zeros(len(num_clips), max(num_clips), vid_emb.shape[1])).cuda()
     para_reshape_emb = Variable(torch.zeros(len(num_caps),  max(num_caps),  para_emb.shape[1])).cuda()
 
     if clip_emb != None and cap_emb != None:
-        for i, end_place in enumerate(num_clips):
-            vid_reshape_emb[i,0,:] = vid_emb[i]
-            for k in range(1, end_place):
-                vid_reshape_emb[i, k, :] = clip_emb[i,k-1,:]
-
-        for i, end_place in enumerate(num_caps):
-          para_reshape_emb[i,0,:] = para_emb[i]
-          for k in range(1, end_place):
-              para_reshape_emb[i, k, :] = cap_emb[i,k-1,:]
+        NotImplemented
     else:
         for i, end_place in enumerate(num_clips):
-            for k in range(end_place):
-                vid_reshape_emb[i, k, :] = vid_emb[i]
+          for k in range(end_place):
+            vid_reshape_emb[i, k, :] = vid_emb[i]
 
         for i, end_place in enumerate(num_caps):
           for k in range(end_place):
-              para_reshape_emb[i, k, :] = para_emb[i,:]
+            para_reshape_emb[i, k, :] = para_emb[i,:]
 
     vid_emb  = self.vid_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
     para_emb = self.txt_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
@@ -322,7 +313,7 @@ class VSE(object):
     self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
     return loss
 
-  def forward_remap_loss(self, vid_emb, clip_emb, name, **kwargs):
+  def forward_reconstruct_loss(self, vid_emb, clip_emb, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
     """
     loss = self.criterion_Euclid_Distance(vid_emb, clip_emb)
@@ -342,8 +333,8 @@ class VSE(object):
     clip_emb, cap_emb = self.forward_emb(clips, captions, lengths_clip, lengths_cap)
     vid_context, para_context = self.forward_emb(videos, paragraphs, lengths_video, lengths_paragraph)
     vid_emb, para_emb = self.structure_emb(clip_emb, cap_emb, num_clips, num_caps, vid_context, para_context)
-    if opts.remap_term:
-        clip_remap, cap_remap = self.remap_emb(vid_emb, para_emb, num_clips, num_caps)
+    if opts.reconstruct_term:
+        clip_reconstruct, cap_reconstruct = self.reconstruct_emb(vid_emb, para_emb, num_clips, num_caps)
 
     if opts.center_loss:
       vid_reproject  = self.fc_visual(vid_emb)
@@ -353,25 +344,40 @@ class VSE(object):
     self.optimizer.zero_grad()
 
     loss_1 = self.forward_loss(vid_emb, para_emb, '_vid')
-    if opts.no_correspond:
-      loss_2 = self.forward_loss_group(clip_emb, cap_emb, num_clips, num_caps, '_clip')
+    if opts.loss_2:
+        if opts.no_correspond:
+          loss_2 = self.forward_loss_group(clip_emb, cap_emb, num_clips, num_caps, '_clip')
+        else:
+          loss_2 = self.forward_loss(clip_emb, cap_emb, '_clip')
     else:
-      loss_2 = self.forward_loss(clip_emb, cap_emb, '_clip')
+        loss_2 = 0
 
-    loss_3 = self.forward_loss(vid_context, para_context, '_context')
+    if opts.loss_3:
+        loss_3 = self.forward_loss(vid_context, para_context, '_context')
+    else:
+        loss_3 = 0
+
     if opts.center_loss:
-      loss_4 = self.forward_center_loss(clip_emb, vid_reproject, cap_emb, para_reproject, num_clips, num_caps, '_center')
+        loss_4 = self.forward_center_loss(clip_emb, vid_reproject, cap_emb, para_reproject, num_clips, num_caps, '_center')
     else:
-      loss_4 = 0
+        loss_4 = 0
 
-    loss_5 = self.forward_loss(vid_emb, vid_emb, '_ex_vid') + self.forward_loss(para_emb, para_emb, '_ex_para')
-
-    if opts.remap_term:
-        loss_remap = self.forward_remap_loss(clip_remap, clip_emb, '_remap_clip') + self.forward_remap_loss(cap_remap, cap_emb, '_remap_cap')
+    if opts.loss_5:
+        loss_5 = self.forward_loss(vid_emb, vid_emb, '_ex_vid') + self.forward_loss(para_emb, para_emb, '_ex_para')
     else:
-        loss_remap = 0
+        loss_5 = 0
 
-    loss = loss_1 + (loss_2 + loss_3 + opts.center_loss_weight * loss_4 + loss_5 + loss_remap) * opts.other_loss_weight
+    if opts.low_level_indomain:
+        loss_6 = self.forward_loss(clip_emb, clip_emb, '_ex_clip') + self.forward_loss(cap_emb, cap_emb, '_ex_cap')
+    else:
+        loss_6 = 0
+
+    if opts.reconstruct_term:
+        loss_reconstruct = self.forward_reconstruct_loss(clip_reconstruct, clip_emb, '_reconstruct_clip') + self.forward_reconstruct_loss(cap_reconstruct, cap_emb, '_reconstruct_cap')
+    else:
+        loss_reconstruct= 0
+
+    loss = loss_1 + (loss_2 + loss_3 + opts.center_loss_weight * loss_4 + loss_5 + loss_reconstruct + loss_6) * opts.other_loss_weight
 
     # compute gradient and do SGD step
     loss.backward()

@@ -5,11 +5,11 @@ import shutil
 
 import torch
 
-import activity_net.data as data
-# import didemo.data as data
+# import activity_net.data as data
+import didemo_dev.data as data
 from anet_vocab import Vocabulary
 from model import VSE
-from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter, t2v, i2p
+from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter
 
 import logging
 import tensorboard_logger as tb_logger
@@ -32,7 +32,7 @@ def main():
             help='Path to saved vocabulary pickle files.')
   parser.add_argument('--margin', default=0.2, type=float,
             help='Rank loss margin.')
-  parser.add_argument('--num_epochs', default=50, type=int,
+  parser.add_argument('--num_epochs', default=30, type=int,
             help='Number of training epochs.')
   parser.add_argument('--batch_size', default=64, type=int,
             help='Size of a training mini-batch.')
@@ -60,7 +60,7 @@ def main():
             help='path to latest checkpoint (default: none)')
   parser.add_argument('--max_violation', action='store_true',
             help='Use max instead of sum in the rank loss.')
-  parser.add_argument('--img_dim', default=500, choices=[500, 2048],
+  parser.add_argument('--img_dim', default=2048, choices=[500, 2048],
             help='Dimensionality of the image embedding.')
   parser.add_argument('--measure', default='cosine',
             help='Similarity measure used (cosine|order)')
@@ -83,14 +83,19 @@ def main():
   parser.add_argument('--center_loss_weight', default=1, type=float,
             help='weight of center loss')
 
+  parser.add_argument('--other_loss_weight', default=1, type=float)
+  parser.add_argument('--decode_rnn_type', default='seq2seq')
+
   parser.add_argument('--data_switch', default=0, type=int)
+  parser.add_argument('--loss_2', action='store_true')
+  parser.add_argument('--loss_3', action='store_true')
+  parser.add_argument('--loss_5', action='store_true')
   parser.add_argument('--center_loss', action='store_true')
   parser.add_argument('--identity', action='store_true')
   parser.add_argument('--tune_seq', action='store_true')
   parser.add_argument('--no_correspond', action='store_true')
-  parser.add_argument('--other_loss_weight', default=1, type=float)
-  parser.add_argument('--decode_rnn_type', default='seq2seq')
-  parser.add_argument('--remap_term', action='store_true')
+  parser.add_argument('--reconstruct_term', action='store_true')
+  parser.add_argument('--low_level_indomain', action='store_true')
 
   opt = parser.parse_args()
   print (opt)
@@ -118,6 +123,9 @@ def main():
   print(model.txt_enc)
   print(model.vid_seq_enc)
   print(model.txt_seq_enc)
+  if opt.reconstruct_term:
+    print(model.vid_seq_dec)
+    print(model.txt_seq_dec)
 
   start_epoch = 0
   # optionally resume from a checkpoint
@@ -206,12 +214,13 @@ def train(opt, train_loader, model, epoch, val_loader):
     # validate at every val_step
     if model.Eiters % opt.val_step == 0:
       validate(opt, val_loader, model)
+      model.train_start()
 
 
 def validate(opt, val_loader, model):
   # compute the encoding for all the validation images and captions
   vid_seq_embs, para_seq_embs, clip_embs, cap_embs, _, _ = encode_data(
-    model, val_loader, opt.log_step, logging.info)
+    model, val_loader, opt.log_step, logging.info, contextual_model=True)
 
   # caption retrieval
   vid_clip_rep, _, _ = i2t(clip_embs, cap_embs, measure=opt.measure)
@@ -259,20 +268,6 @@ def adjust_learning_rate(opt, optimizer, epoch):
     param_group['lr'] = lr
 
 
-def accuracy(output, target, topk=(1,)):
-  """Computes the precision@k for the specified values of k"""
-  maxk = max(topk)
-  batch_size = target.size(0)
-
-  _, pred = output.topk(maxk, 1, True, True)
-  pred = pred.t()
-  correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-  res = []
-  for k in topk:
-    correct_k = correct[:k].view(-1).float().sum(0)
-    res.append(correct_k.mul_(100.0 / batch_size))
-  return res
 
 if __name__ == '__main__':
   main()

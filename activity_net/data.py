@@ -29,7 +29,7 @@ class PrecompDataset(data.Dataset):
       self.ann_id[i] = keys
 
     # Image features
-    self.video_emb = h5py.File(osp.join(this_dir, 'data', 'sub_activitynet_v1-3.c3d.hdf5-'+str(opt.data_switch)))
+    self.video_emb = h5py.File(osp.join(this_dir, 'data', 'sub_activitynet_v1-3.c3d.hdf5-0'),'r',swmr=True)
 
     self.length = len(self.ann_id)
 
@@ -157,7 +157,7 @@ def get_loaders(data_name, vocab, batch_size, workers, opt):
   if opt.data_name.endswith('_precomp'):
     train_loader = get_precomp_loader(dpath, 'train', vocab, opt,
                       batch_size, True, workers)
-    val_loader   = get_precomp_loader(dpath, 'val_1', vocab, opt,
+    val_loader   = get_precomp_loader(dpath, 'val_2', vocab, opt,
                     batch_size, False, workers)
   return train_loader, val_loader
 

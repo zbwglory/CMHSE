@@ -152,18 +152,45 @@ class CenterLoss(nn.Module):
   def forward(self, clips, videos, caps, paragraphs, num_clips, num_caps):
       return self.forward_loss(clips, videos, num_clips) + self.forward_loss(caps, paragraphs, num_caps)
 
-class EuclideanLoss(nn.Module):
-  def __init__(self):
-    super(EuclideanLoss, self).__init__()
+class ReconstructLoss(nn.Module):
+  def __init__(self, margin=0, measure=False, max_violation=False):
+    super(ContrastiveLoss, self).__init__()
+    self.margin = margin
+    if measure == 'order':
+      NotImplemented
+    else:
+      self.sim = cosine_sim
 
-  def forward_loss(self, clip_remap, clip_emb):
+    self.max_violation = max_violation
+
+  def forward(self, im, s):
     # compute image-sentence score matrix
-    score = clip_remap - clip_emb
+    scores = self.sim(im, s)
+    diagonal = scores.diag().view(im.size(0), 1)
+    d1 = diagonal.expand_as(scores)
+    d2 = diagonal.t().expand_as(scores)
 
-    score = torch.sqrt((score**2).sum(dim=1)).sum(0)
+    # compare every diagonal score to scores in its column
+    # caption retrieval
+    cost_s = (self.margin + scores - d1).clamp(min=0)
+    # compare every diagonal score to scores in its row
+    # image retrieval
+    cost_im = (self.margin + scores - d2).clamp(min=0)
 
-    return score
+    # clear diagonals
+    mask = torch.eye(scores.size(0)) > .5
+    I = Variable(mask)
+    if torch.cuda.is_available():
+      I = I.cuda()
+    cost_s = cost_s.masked_fill_(I, 0)
+    cost_im = cost_im.masked_fill_(I, 0)
 
-  def forward(self, clip_remap, clip_emb):
-      return self.forward_loss(clip_remap, clip_emb)
+    # keep the maximum violating negative for each query
+    if self.max_violation:
+      cost_s = cost_s.max(1)[0]
+      cost_im = cost_im.max(0)[0]
+
+    return cost_s.sum() + cost_im.sum() + (d1-1).abs().sum() + (d2-1).abs().sum()
+    # return cost_s.sum()
+
 

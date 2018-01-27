@@ -95,7 +95,6 @@ class PrecompDataset(data.Dataset):
   def __getitem__(self, index):
     # handle the image redundancy
     cur_vid = self.ann_id[index]
-    print cur_vid,index
     image_data = self.video_emb[cur_vid+'.npz'].value
     image = torch.Tensor(image_data)
     caption_json = self.jsondict[cur_vid]['description']
@@ -161,7 +160,7 @@ def get_loaders(data_name, vocab, batch_size, workers, opt):
   dpath = os.path.join(opt.data_path, data_name)
   if opt.data_name.endswith('_precomp'):
     train_loader = get_precomp_loader(dpath, 'train_data_bwzhang', vocab, opt,
-                      batch_size, False, workers)
+                      batch_size, True, workers)
     val_loader   = get_precomp_loader(dpath, 'val_data_bwzhang', vocab, opt,
                     batch_size, False, workers)
   return train_loader, val_loader

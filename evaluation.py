@@ -104,12 +104,12 @@ def encode_data(model, data_loader, log_step=10, logging=print, contextual_model
       vid_emb, para_emb = model.structure_emb(clip_emb, cap_emb, num_clips, num_caps)
 
     # initialize the numpy arrays given the size of the embeddings
-    clip_embs.append(clip_emb.data.cpu())
-    cap_embs.append(cap_emb.data.cpu())
-    vid_embs.append(vid_emb.data.cpu())
-    para_embs.append(para_emb.data.cpu())
-    vid_contexts.append( vid_context.data.cpu())
-    para_contexts.append(para_context.data.cpu())
+    clip_embs.extend(clip_emb.data.cpu())
+    cap_embs.extend(cap_emb.data.cpu())
+    vid_embs.extend(vid_emb.data.cpu())
+    para_embs.extend(para_emb.data.cpu())
+    vid_contexts.extend( vid_context.data.cpu())
+    para_contexts.extend(para_context.data.cpu())
 
     # measure accuracy and record loss
     model.forward_loss(vid_emb, para_emb, 'test')
@@ -126,18 +126,18 @@ def encode_data(model, data_loader, log_step=10, logging=print, contextual_model
             i, len(data_loader), batch_time=batch_time,
             e_log=str(model.logger)))
 
-  vid_embs  = torch.cat(vid_embs, 0)
-  para_embs = torch.cat(para_embs, 0)
+  vid_embs  = torch.stack(vid_embs, 0)
+  para_embs = torch.stack(para_embs, 0)
   vid_embs  = vid_embs.numpy()
   para_embs = para_embs.numpy()
 
-  clip_embs = torch.cat(clip_embs, 0)
-  cap_embs = torch.cat(cap_embs, 0)
+  clip_embs = torch.stack(clip_embs, 0)
+  cap_embs = torch.stack(cap_embs, 0)
   clip_embs = clip_embs.numpy()
   cap_embs = cap_embs.numpy()
 
-  vid_contexts  = torch.cat(vid_contexts, 0)
-  para_contexts = torch.cat(para_contexts, 0)
+  vid_contexts  = torch.stack(vid_contexts, 0)
+  para_contexts = torch.stack(para_contexts, 0)
   vid_contexts  = vid_contexts.numpy()
   para_contexts = para_contexts.numpy()
 
@@ -197,154 +197,3 @@ def t2i(images, captions, npts=None, measure='cosine'):
   report_dict['meanr'] = meanr
   report_dict['sum'] = r1+r5+r10
   return report_dict, top1, ranks
-
-def t2v(images, captions, video, paragraph, seg_num, npts=None, measure='cosine'):
-  npts = captions.shape[0]
-  ranks = numpy.zeros(npts)
-  top1 = numpy.zeros(npts)
-  d_t2v = numpy.dot(captions, video.T)
-
-  seg_start = [sum(seg_num[0:i]) for i in range(len(seg_num))]
-  seg_start.append(npts)
-  aff_vind = np.zeros(npts)
-  for i in range(len(seg_start)-1):
-    aff_vind[seg_start[i]:seg_start[i+1]] = i
-  aff_vind.astype(int)
-
-  for index in range(npts):
-      inds = numpy.argsort(d_t2v[index])[::-1]
-      rank = numpy.where(inds == aff_vind[index])[0][0]
-      ranks[index] = rank
-      top1[index] = inds[0]
-
-  r1 = 100.0 * len(numpy.where(ranks < 1)[0]) / len(ranks)
-  r5 = 100.0 * len(numpy.where(ranks < 5)[0]) / len(ranks)
-  r10 = 100.0 * len(numpy.where(ranks < 50)[0]) / len(ranks)
-  medr = numpy.floor(numpy.median(ranks)) + 1
-  meanr = ranks.mean() + 1
-  report_dict = dict()
-  report_dict['r1'] = r1
-  report_dict['r5'] = r5
-  report_dict['r10'] = r10
-  report_dict['medr'] = medr
-  report_dict['meanr'] = meanr
-  report_dict['sum'] = r1+r5+r10
-  return report_dict, top1, ranks
-
-def i2p(images, captions, video, paragraph, seg_num, npts=None, measure='cosine'):
-  npts = captions.shape[0]
-  ranks = numpy.zeros(npts)
-  top1 = numpy.zeros(npts)
-  d_t2v = numpy.dot(images, paragraph.T)
-
-  seg_start = [sum(seg_num[0:i]) for i in range(len(seg_num))]
-  seg_start.append(npts)
-  aff_vind = np.zeros(npts)
-  for i in range(len(seg_start)-1):
-    aff_vind[seg_start[i]:seg_start[i+1]] = i
-  aff_vind.astype(int)
-
-  for index in range(npts):
-      inds = numpy.argsort(d_t2v[index])[::-1]
-      rank = numpy.where(inds == aff_vind[index])[0][0]
-      ranks[index] = rank
-      top1[index] = inds[0]
-
-  r1 = 100.0 * len(numpy.where(ranks < 1)[0]) / len(ranks)
-  r5 = 100.0 * len(numpy.where(ranks < 5)[0]) / len(ranks)
-  r10 = 100.0 * len(numpy.where(ranks < 50)[0]) / len(ranks)
-  medr = numpy.floor(numpy.median(ranks)) + 1
-  meanr = ranks.mean() + 1
-  report_dict = dict()
-  report_dict['r1'] = r1
-  report_dict['r5'] = r5
-  report_dict['r10'] = r10
-  report_dict['medr'] = medr
-  report_dict['meanr'] = meanr
-  report_dict['sum'] = r1+r5+r10
-  return report_dict, top1, ranks
-
-def encode_eval_data(model, data_loader, log_step=10, logging=print, num_offsets=3):
-  """Encode all images and captions loadable by `data_loader`
-  """
-  batch_time = AverageMeter()
-  val_logger = LogCollector()
-
-  # switch to evaluate mode
-  model.val_start()
-
-  end = time.time()
-
-  # numpy array to keep all the embeddings
-  vid_embs = [ [] for _ in xrange(num_offsets)]
-  para_embs = [ [] for _ in xrange(num_offsets)]
-  for i, (images, captions, _, _, lengths_img, lengths_cap, _, _, num_clips, num_caps, ind) in enumerate(data_loader):
-    # make sure val logger is used
-    model.logger = val_logger
-
-    # compute the embeddings
-    for _offset in xrange(num_offsets):
-      vid_emb, para_emb = model.test_emb(images, captions, lengths_img, lengths_cap, ind, num_clips, num_caps, offset=_offset)
-
-      vid_embs[_offset].append(vid_emb.data.cpu())
-      para_embs[_offset].append(para_emb.data.cpu())
-
-    # measure elapsed time
-    batch_time.update(time.time() - end)
-    end = time.time()
-
-    if i % log_step == 0:
-      logging('Test: [{0}/{1}]\t'
-          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-          .format(
-            i, len(data_loader), batch_time=batch_time))
-    del images, captions
-
-  vid_embs = [ torch.cat(vid_embs[_offset], 0).numpy() for _offset in xrange(num_offsets) ]
-  para_embs = [ torch.cat(para_embs[_offset], 0).numpy() for _offset in xrange(num_offsets) ]
-
-  return vid_embs, para_embs
-
-def encode_flat_data(model, data_loader, log_step=10, logging=print):
-  """Encode all images and captions loadable by `data_loader`
-  """
-  batch_time = AverageMeter()
-  val_logger = LogCollector()
-
-  # switch to evaluate mode
-  model.val_start()
-
-  end = time.time()
-
-  # numpy array to keep all the embeddings
-  clip_embs, cap_embs = [], []
-  vid_embs, para_embs = [], []
-  vid_contexts, para_contexts = [], []
-  for i, (clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, num_clips, num_caps, ind) in enumerate(data_loader):
-    # make sure val logger is used
-    model.logger = val_logger
-
-    vid_context, para_context = model.forward_emb(videos, paragraphs, lengths_video, lengths_paragraph)
-    vid_contexts.append( vid_context.data.cpu())
-    para_contexts.append(para_context.data.cpu())
-
-    # measure accuracy and record loss
-    model.forward_loss(vid_emb, para_emb, 'test')
-
-    # measure elapsed time
-    batch_time.update(time.time() - end)
-    end = time.time()
-
-    if i % log_step == 0:
-      logging('Test: [{0}/{1}]\t'
-          '{e_log}\t'
-          'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-          .format(
-            i, len(data_loader), batch_time=batch_time,
-            e_log=str(model.logger)))
-    del images, captions
-
-  vid_contexts  = torch.cat(vid_contexts, 0)
-  para_contexts = torch.cat(para_contexts, 0)
-
-  return vid_contexts, para_contexts
