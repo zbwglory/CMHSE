@@ -13,6 +13,7 @@ class Seq2Seq_Decode(nn.Module):
   def __init__(self, embedding_features, rnn_features, rnn_bidirectional=False):
     super(Seq2Seq_Decode, self).__init__()
     self.bidirectional = rnn_bidirectional
+    print embedding_features, rnn_features
 
     self.rnn = nn.GRU(input_size=embedding_features,
               hidden_size=rnn_features,

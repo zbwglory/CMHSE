@@ -15,6 +15,7 @@ class EuclideanLoss(nn.Module):
 
   def forward_loss(self, clip_remap, clip_emb):
     # compute image-sentence score matrix
+#    embed()
     score = clip_remap - clip_emb
 
     score = torch.sqrt((score**2).sum(dim=1)).sum(0)

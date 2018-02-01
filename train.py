@@ -5,8 +5,8 @@ import shutil
 
 import torch
 
-# import activity_net.data as data
-import didemo_dev.data as data
+import activity_net.data as data
+# import didemo_dev.data as data
 from anet_vocab import Vocabulary
 from model import VSE
 from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter
@@ -60,7 +60,7 @@ def main():
             help='path to latest checkpoint (default: none)')
   parser.add_argument('--max_violation', action='store_true',
             help='Use max instead of sum in the rank loss.')
-  parser.add_argument('--img_dim', default=2048, choices=[500, 2048],
+  parser.add_argument('--img_dim', default=500, choices=[500, 2048],
             help='Dimensionality of the image embedding.')
   parser.add_argument('--measure', default='cosine',
             help='Similarity measure used (cosine|order)')
@@ -96,6 +96,7 @@ def main():
   parser.add_argument('--no_correspond', action='store_true')
   parser.add_argument('--reconstruct_term', action='store_true')
   parser.add_argument('--low_level_indomain', action='store_true')
+  parser.add_argument('--lowest_reconstruct_term', action='store_true')
 
   opt = parser.parse_args()
   print (opt)
@@ -106,7 +107,7 @@ def main():
   tb_logger.configure(opt.logger_name, flush_secs=5)
 
   # Load Vocabulary Wrapper
-  vocab_path = os.path.join(opt.vocab_path, '%s_vocab.pkl' % opt.data_name)
+  vocab_path = os.path.join(opt.vocab_path, '%s_vocab_total.pkl' % opt.data_name)
   print (vocab_path)
   vocab = pickle.load(open(vocab_path, 'rb'))
   opt.vocab_size = len(vocab)

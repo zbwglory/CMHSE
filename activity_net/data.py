@@ -157,7 +157,7 @@ def get_loaders(data_name, vocab, batch_size, workers, opt):
   if opt.data_name.endswith('_precomp'):
     train_loader = get_precomp_loader(dpath, 'train', vocab, opt,
                       batch_size, True, workers)
-    val_loader   = get_precomp_loader(dpath, 'val_2', vocab, opt,
+    val_loader   = get_precomp_loader(dpath, 'val_1', vocab, opt,
                     batch_size, False, workers)
   return train_loader, val_loader
 

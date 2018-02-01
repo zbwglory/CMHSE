@@ -20,6 +20,7 @@ class DecoderSequence(nn.Module):
     self.embed_size = embed_size
     self.no_imgnorm = no_imgnorm
     self.bidirectional = bidirectional
+    self.img_dim = img_dim
 
     num_layers = 1
     if dropout > 0:
@@ -35,7 +36,9 @@ class DecoderSequence(nn.Module):
     lengths = lengths.numpy().astype(int)
     sum_total = sum(lengths)
 #    print (x.shape, sum_total)
-    outputs_reshape = Variable(torch.zeros(sum_total,x.shape[2])).cuda()
+########## TODO: BUG ###################
+    outputs_reshape = Variable(torch.zeros(sum_total,outputs.shape[2])).cuda()
+########## TODO: BUG ###################
 #    print outputs_reshape.shape
     pos = 0
     for i,leng in enumerate(lengths):

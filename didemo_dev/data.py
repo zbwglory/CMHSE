@@ -48,7 +48,6 @@ class PrecompDataset(data.Dataset):
       end_frame = picked_segment[1]
 
       if start_frame > video_feat_len or end_frame > video_feat_len:
-          print cur_vid, start_frame, end_frame, video_feat_len
           end_frame=video_feat.shape[0] 
           start_frame=0 
 
