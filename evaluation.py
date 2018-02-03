@@ -91,7 +91,7 @@ def encode_data(model, data_loader, log_step=10, logging=print, contextual_model
   vid_embs, para_embs = [], []
   img_seq_recast_embs, cap_seq_recast_embs = [], []
   vid_contexts, para_contexts = [], []
-  for i, (clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, num_clips, num_caps, ind) in enumerate(data_loader):
+  for i, (clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, num_clips, num_caps, ind, _, _) in enumerate(data_loader):
     # make sure val logger is used
     model.logger = val_logger
 

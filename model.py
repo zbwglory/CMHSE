@@ -16,6 +16,7 @@ from loss import *
 from decoder.layers import *
 from decoder.model import *
 from decoder.loss import *
+import time
 
 def EncoderImage(data_name, img_dim, embed_size,
                  finetune=False, dropout=0.5,
@@ -224,8 +225,8 @@ class VSE(object):
     self.fc_language.load_state_dict(state_dict[5])
     self.vid_seq_dec.load_state_dict(state_dict[6])
     self.txt_seq_dec.load_state_dict(state_dict[7])
-    self.frame_seq_dec.load_state_dict(state_dict[6])
-    self.word_seq_dec.load_state_dict(state_dict[7])
+    self.frame_seq_dec.load_state_dict(state_dict[8])
+    self.word_seq_dec.load_state_dict(state_dict[9])
 
   def train_start(self):
     """switch to train mode
@@ -298,12 +299,12 @@ class VSE(object):
         NotImplemented
     else:
         for i, end_place in enumerate(num_clips):
-          for k in range(end_place):
-            vid_reshape_emb[i, k, :] = vid_emb[i]
+            vid_reshape_emb[i, :end_place, :] = vid_emb[i].expand(1, end_place, vid_emb.shape[1])
 
         for i, end_place in enumerate(num_caps):
-          for k in range(end_place):
-            para_reshape_emb[i, k, :] = para_emb[i,:]
+            para_reshape_emb[i, :end_place, :] = para_emb[i,:].expand(1, end_place, para_emb.shape[1])
+
+    #embed()
 
     vid_emb  = self.vid_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
     para_emb = self.txt_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
@@ -316,12 +317,12 @@ class VSE(object):
     para_reshape_emb = Variable(torch.zeros(len(num_caps),  max(num_caps),  para_emb.shape[1])).cuda()
 
     for i, end_place in enumerate(num_clips):
-      for k in range(end_place):
-        vid_reshape_emb[i, k, :] = vid_emb[i]
+#      for k in range(end_place):
+        vid_reshape_emb[i, :end_place, :] = vid_emb[i].expand(1, end_place, vid_emb.shape[1])
 
     for i, end_place in enumerate(num_caps):
-      for k in range(end_place):
-        para_reshape_emb[i, k, :] = para_emb[i,:]
+#      for k in range(end_place):
+        para_reshape_emb[i, :end_place, :] = para_emb[i,:].expand(1, end_place, para_emb.shape[1])
 
     vid_emb  = self.frame_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
     para_emb = self.word_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
@@ -360,7 +361,7 @@ class VSE(object):
 
   def train_emb(self, opts, clips, captions, videos, paragraphs,
       lengths_clip, lengths_cap, lengths_video, lengths_paragraph,
-      num_clips, num_caps, ind, *args):
+      num_clips, num_caps, ind, clip_stack, word_stack, *args):
     """One training step given clips and captions.
     """
     self.Eiters += 1
@@ -376,7 +377,8 @@ class VSE(object):
         clip_reconstruct, cap_reconstruct = self.reconstruct_emb(vid_emb, para_emb, num_clips, num_caps)
 
     if opts.lowest_reconstruct_term:
-        frame_reconstruct, word_reconstruct = self.lowest_reconstruct_emb(clip_emb, cap_emb, lengths_clip.numpy(), lengths_cap.numpy())
+        frame_reconstruct, word_reconstruct = self.lowest_reconstruct_emb(clip_reconstruct, cap_reconstruct, lengths_clip.numpy(), lengths_cap.numpy())
+        #frame_reconstruct, word_reconstruct = self.lowest_reconstruct_emb(clip_emb, cap_emb, lengths_clip.numpy(), lengths_cap.numpy())
 
     # measure accuracy and record loss
     self.optimizer.zero_grad()
@@ -405,17 +407,14 @@ class VSE(object):
     else:
         loss_6 = 0
 
-    if opts.reconstruct_term:
-        loss_reconstruct = self.forward_reconstruct_loss(clip_reconstruct, clip_emb, '_reconstruct_clip') + self.forward_reconstruct_loss(cap_reconstruct, cap_emb, '_reconstruct_cap')
-    else:
-        loss_reconstruct= 0
-        
     if opts.lowest_reconstruct_term:
+
         clips_var = torch.zeros(lengths_clip.sum(), 500)
         curpos = 0
         for i in range(clips.shape[0]):
             clips_var[curpos: curpos+lengths_clip[i],:] = clips[i,0:lengths_clip[i],:]
             curpos = curpos + lengths_clip[i]
+
 
         words_var = Variable(torch.zeros(lengths_cap.sum(), 300)).cuda()
         curpos = 0
@@ -423,16 +422,17 @@ class VSE(object):
             words_var[curpos: curpos+lengths_cap[i],:] =word[i,0:lengths_cap[i],:]
             curpos = curpos + lengths_cap[i]
 
-
-        loss_lowest_reconstruct = self.forward_reconstruct_loss(frame_reconstruct, Variable(clips_var).cuda().detach(), '_reconstruct_frame') + self.forward_reconstruct_loss(word_reconstruct, words_var.detach(), '_reconstruct_word')
+        loss_lowest_reconstruct = self.forward_reconstruct_loss(frame_reconstruct, Variable(clip_stack).cuda().detach(), '_reconstruct_frame') + self.forward_reconstruct_loss(word_reconstruct, words_var.detach(), '_reconstruct_word')
     else:
         loss_lowest_reconstruct= 0
 
 
-    loss = loss_1 + (loss_2 + loss_3 + loss_5 + loss_reconstruct + loss_lowest_reconstruct + loss_6) * opts.other_loss_weight
+    loss = loss_1 + loss_2 + loss_3 + loss_5 + loss_lowest_reconstruct * opts.other_loss_weight + loss_6
 
     # compute gradient and do SGD step
+    #a = time.time()
     loss.backward()
+    #print (time.time()-a)
     if self.grad_clip > 0: clip_grad_norm(self.params, self.grad_clip)
     self.optimizer.step()
 

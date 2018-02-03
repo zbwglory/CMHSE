@@ -36,9 +36,7 @@ class DecoderSequence(nn.Module):
     lengths = lengths.numpy().astype(int)
     sum_total = sum(lengths)
 #    print (x.shape, sum_total)
-########## TODO: BUG ###################
     outputs_reshape = Variable(torch.zeros(sum_total,outputs.shape[2])).cuda()
-########## TODO: BUG ###################
 #    print outputs_reshape.shape
     pos = 0
     for i,leng in enumerate(lengths):
