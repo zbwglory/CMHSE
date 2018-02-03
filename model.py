@@ -352,10 +352,10 @@ class VSE(object):
     self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
     return loss
 
-  def forward_reconstruct_loss(self, vid_emb, clip_emb, name, **kwargs):
+  def forward_reconstruct_loss(self, vid_emb, clip_emb, name, num_list, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
     """
-    loss = self.criterion_Euclid_Distance(vid_emb, clip_emb)
+    loss = self.criterion_Euclid_Distance(vid_emb, clip_emb, num_list)
     self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
     return loss
 
@@ -422,7 +422,7 @@ class VSE(object):
             words_var[curpos: curpos+lengths_cap[i],:] =word[i,0:lengths_cap[i],:]
             curpos = curpos + lengths_cap[i]
 
-        loss_lowest_reconstruct = self.forward_reconstruct_loss(frame_reconstruct, Variable(clip_stack).cuda().detach(), '_reconstruct_frame') + self.forward_reconstruct_loss(word_reconstruct, words_var.detach(), '_reconstruct_word')
+        loss_lowest_reconstruct = self.forward_reconstruct_loss(frame_reconstruct, Variable(clip_stack).cuda().detach(), '_reconstruct_frame', lengths_clip) + self.forward_reconstruct_loss(word_reconstruct, words_var.detach(), '_reconstruct_word', lengths_cap)
     else:
         loss_lowest_reconstruct= 0
 

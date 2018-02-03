@@ -13,15 +13,19 @@ class EuclideanLoss(nn.Module):
   def __init__(self):
     super(EuclideanLoss, self).__init__()
 
-  def forward_loss(self, clip_remap, clip_emb):
+  def forward_loss(self, clip_remap, clip_emb, num_list):
     # compute image-sentence score matrix
-#    embed()
     score = clip_remap - clip_emb
 
-    score = torch.sqrt((score**2).sum(dim=1)).sum(0)
+    score_sub = torch.sqrt((score**2).sum(dim=1))
+
+    pos = 0
+    for cur in num_list:
+        score_sub[pos:cur+pos] = score_sub[pos:cur+pos] / cur
+        pos = pos + cur
 
     return score
 
-  def forward(self, clip_remap, clip_emb):
-      return self.forward_loss(clip_remap, clip_emb)
+  def forward(self, clip_remap, clip_emb, num_list):
+      return self.forward_loss(clip_remap, clip_emb, num_list)
 
