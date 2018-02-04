@@ -90,12 +90,9 @@ def main():
   parser.add_argument('--loss_2', action='store_true')
   parser.add_argument('--loss_3', action='store_true')
   parser.add_argument('--loss_5', action='store_true')
-  parser.add_argument('--center_loss', action='store_true')
-  parser.add_argument('--identity', action='store_true')
-  parser.add_argument('--tune_seq', action='store_true')
+  parser.add_argument('--low_level_indomain', action='store_true')
   parser.add_argument('--no_correspond', action='store_true')
   parser.add_argument('--reconstruct_term', action='store_true')
-  parser.add_argument('--low_level_indomain', action='store_true')
   parser.add_argument('--lowest_reconstruct_term', action='store_true')
 
   opt = parser.parse_args()
@@ -180,7 +177,6 @@ def train(opt, train_loader, model, epoch, val_loader):
 
   end = time.time()
   for i, train_data in enumerate(train_loader):
-    #embed()
     # measure data loading time
     data_time.update(time.time() - end)
 

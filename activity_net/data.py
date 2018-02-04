@@ -89,7 +89,7 @@ class PrecompDataset(data.Dataset):
     clips_stack = torch.cat(clips,0)
     word_stack = torch.cat(captions,0)
 
-    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption, clips_stack, word_stack
+    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption
 
   def __getitem__(self, index):
     # handle the image redundancy
@@ -99,15 +99,15 @@ class PrecompDataset(data.Dataset):
     caption_json = self.jsondict[cur_vid]['sentences']
 
     clips, captions, video, paragraph, lengths_clip, lengths_cap, \
-      num_clip, num_caption, clips_stack, word_stack = self.img_cap_feat_combine(image, caption_json, cur_vid)
+      num_clip, num_caption = self.img_cap_feat_combine(image, caption_json, cur_vid)
 
-    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption, index, clips_stack, word_stack
+    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption, index
 
   def __len__(self):
     return self.length
 
 def collate_fn(data_batch):
-  _clips, _captions, _video, _paragraph, _lengths_clip, _lengths_cap, _num_clip, _num_caption, _index, _clips_stack, _word_stack = zip(*data_batch)
+  _clips, _captions, _video, _paragraph, _lengths_clip, _lengths_cap, _num_clip, _num_caption, _index = zip(*data_batch)
 
   # Merge images
   lengths_clip = torch.cat(_lengths_clip, 0)
@@ -142,10 +142,8 @@ def collate_fn(data_batch):
     paragraphs[i, :end] = cap[:end ]
   
   #embed()
-  clips_stack = torch.cat(_clips_stack,0)
-  word_stack = torch.cat(_word_stack,0)
 
-  return clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, _num_clip, _num_caption, _index , clips_stack, word_stack
+  return clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, _num_clip, _num_caption, _index 
 
 def get_precomp_loader(data_path, data_split, vocab, opt, batch_size=100,
              shuffle=True, num_workers=2):

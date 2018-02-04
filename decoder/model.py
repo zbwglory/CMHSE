@@ -42,8 +42,7 @@ class DecoderSequence(nn.Module):
     for i,leng in enumerate(lengths):
         outputs_reshape[pos:pos+leng,:] = outputs[i,0:leng,:]
         pos = pos + leng
-    #embed()
 
     # normalization in the joint embedding space
-    return F.normalize(outputs_reshape)
+    return outputs_reshape
 
