@@ -104,7 +104,7 @@ def main():
   tb_logger.configure(opt.logger_name, flush_secs=5)
 
   # Load Vocabulary Wrapper
-  vocab_path = os.path.join(opt.vocab_path, '%s_vocab_total.pkl' % opt.data_name)
+  vocab_path = os.path.join(opt.vocab_path, '%s_vocab.pkl' % opt.data_name)
   print (vocab_path)
   vocab = pickle.load(open(vocab_path, 'rb'))
   opt.vocab_size = len(vocab)

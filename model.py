@@ -117,6 +117,12 @@ class VSE(object):
     self.word_seq_dec = DecoderSequence(opt.embed_size, opt.word_dim,
                   rnn_type=opt.decode_rnn_type)
 
+    self.frame_seq_dec_hier = DecoderSequence(opt.embed_size, opt.img_dim,
+                  rnn_type=opt.decode_rnn_type)
+    self.word_seq_dec_hier = DecoderSequence(opt.embed_size, opt.word_dim,
+                  rnn_type=opt.decode_rnn_type)
+
+ 
     if torch.cuda.is_available():
       self.clip_enc.cuda()
       self.txt_enc.cuda()
@@ -126,6 +132,8 @@ class VSE(object):
       self.txt_seq_dec.cuda()
       self.frame_seq_dec.cuda()
       self.word_seq_dec.cuda()
+      self.frame_seq_dec_hier.cuda()
+      self.word_seq_dec_hier.cuda()
       cudnn.benchmark = True
 
     # Loss and Optimizer
@@ -145,6 +153,8 @@ class VSE(object):
     params += list(self.txt_seq_dec.parameters())
     params += list(self.frame_seq_dec.parameters())
     params += list(self.word_seq_dec.parameters())
+    params += list(self.frame_seq_dec_hier.parameters())
+    params += list(self.word_seq_dec_hier.parameters())
     self.params = params
 
     self.optimizer = torch.optim.Adam(params, lr=opt.learning_rate)
@@ -155,7 +165,8 @@ class VSE(object):
     state_dict = [self.clip_enc.state_dict(), self.txt_enc.state_dict(), \
                   self.vid_seq_enc.state_dict(), self.txt_seq_enc.state_dict(), \
                   self.vid_seq_dec.state_dict(), self.txt_seq_dec.state_dict(), \
-                  self.frame_seq_dec.state_dict(), self.word_seq_dec.state_dict()]
+                  self.frame_seq_dec.state_dict(), self.word_seq_dec.state_dict(), \
+                  self.frame_seq_dec_hier.state_dict(), self.word_seq_dec_hier.state_dict()]
     return state_dict
 
   def load_state_dict(self, state_dict):
@@ -167,6 +178,8 @@ class VSE(object):
     self.txt_seq_dec.load_state_dict(state_dict[5])
     self.frame_seq_dec.load_state_dict(state_dict[6])
     self.word_seq_dec.load_state_dict(state_dict[7])
+    self.frame_seq_dec_hier.load_state_dict(state_dict[8])
+    self.word_seq_dec_hier.load_state_dict(state_dict[9])
 
   def train_start(self):
     """switch to train mode
@@ -179,6 +192,8 @@ class VSE(object):
     self.txt_seq_dec.train()
     self.frame_seq_dec.train()
     self.word_seq_dec.train()
+    self.frame_seq_dec_hier.train()
+    self.word_seq_dec_hier.train()
 
   def val_start(self):
     """switch to evaluate mode
@@ -191,6 +206,8 @@ class VSE(object):
     self.txt_seq_dec.eval()
     self.frame_seq_dec.eval()
     self.word_seq_dec.eval()
+    self.frame_seq_dec_hier.eval()
+    self.word_seq_dec_hier.eval()
 
   def forward_emb(self, clips, captions, lengths_clip, lengths_cap, return_word=False):
     clips    = Variable(clips)
@@ -243,7 +260,7 @@ class VSE(object):
     return vid_emb, para_emb
 
 
-  def lowest_reconstruct_emb(self, vid_emb, para_emb, num_clips, num_caps):
+  def lowest_reconstruct_emb(self, vid_emb, para_emb, num_clips, num_caps, hier):
     vid_reshape_emb = Variable(torch.zeros(len(num_clips), max(num_clips), vid_emb.shape[1])).cuda()
     para_reshape_emb = Variable(torch.zeros(len(num_caps),  max(num_caps),  para_emb.shape[1])).cuda()
 
@@ -253,8 +270,12 @@ class VSE(object):
     for i, end_place in enumerate(num_caps):
         para_reshape_emb[i, :end_place, :] = para_emb[i,:].view(1,1,-1).expand(1, end_place, para_emb.shape[1])
 
-    vid_emb  = self.frame_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
-    para_emb = self.word_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
+    if hier==True:
+        vid_emb  = self.frame_seq_dec_hier(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
+        para_emb = self.word_seq_dec_hier(para_reshape_emb, Variable(torch.Tensor(num_caps)))
+    else:
+        vid_emb  = self.frame_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
+        para_emb = self.word_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
 
     return vid_emb, para_emb
 
@@ -297,8 +318,8 @@ class VSE(object):
         clip_reconstruct, cap_reconstruct = self.reconstruct_emb(vid_emb, para_emb, num_clips, num_caps)
 
     if opts.lowest_reconstruct_term:
-        frame_reconstruct, word_reconstruct = self.lowest_reconstruct_emb(clip_emb, cap_emb, lengths_clip.numpy(), lengths_cap.numpy())
-        frame_reconstruct_hier, word_reconstruct_hier = self.lowest_reconstruct_emb(clip_reconstruct, cap_reconstruct, lengths_clip.numpy(), lengths_cap.numpy())
+#        frame_reconstruct, word_reconstruct = self.lowest_reconstruct_emb(clip_emb, cap_emb, lengths_clip.numpy(), lengths_cap.numpy(), False)
+        frame_reconstruct_hier, word_reconstruct_hier = self.lowest_reconstruct_emb(clip_reconstruct, cap_reconstruct, lengths_clip.numpy(), lengths_cap.numpy(), True)
 
     # measure accuracy and record loss
     self.optimizer.zero_grad()
@@ -347,13 +368,14 @@ class VSE(object):
             words_var[curpos: curpos+lengths_cap[i],:] = word[i,0:lengths_cap[i],:]
             curpos = curpos + lengths_cap[i]
 
-        loss_lowest_reconstruct = self.forward_reconstruct_loss(F.normalize(frame_reconstruct), F.normalize(Variable(clips_var).cuda()).detach(), '_reconstruct_frame', lengths_clip) + self.forward_reconstruct_loss(F.normalize(word_reconstruct), F.normalize(words_var).detach(), '_reconstruct_word', lengths_cap)
+#        loss_lowest_reconstruct = self.forward_reconstruct_loss(F.normalize(frame_reconstruct), F.normalize(Variable(clips_var).cuda()).detach(), '_reconstruct_frame', lengths_clip) + self.forward_reconstruct_loss(F.normalize(word_reconstruct), F.normalize(words_var).detach(), '_reconstruct_word', lengths_cap)
         loss_lowest_reconstruct_hier = self.forward_reconstruct_loss(F.normalize(frame_reconstruct_hier), F.normalize(Variable(clips_var).cuda()).detach(), '_reconstruct_frame_hier', lengths_clip) + self.forward_reconstruct_loss(F.normalize(word_reconstruct_hier), F.normalize(words_var).detach(), '_reconstruct_word_hier', lengths_cap)
     else:
-        loss_lowest_reconstruct= 0
+#        loss_lowest_reconstruct= 0
         loss_lowest_reconstruct_hier= 0
 
-    loss = loss_1 + loss_2 + loss_3 + loss_5 + loss_reconstruct + loss_lowest_reconstruct + loss_lowest_reconstruct_hier + loss_6
+    #loss = loss_1 + loss_2 + loss_3 + loss_5 + loss_reconstruct + loss_lowest_reconstruct + loss_lowest_reconstruct_hier + loss_6
+    loss = loss_1 + loss_2 + loss_3 + loss_5 + loss_reconstruct + loss_lowest_reconstruct_hier + loss_6
 
     # compute gradient and do SGD step
     loss.backward()

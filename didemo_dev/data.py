@@ -53,7 +53,7 @@ class PrecompDataset(data.Dataset):
 
       current_feat = video_feat[start_frame: end_frame+1, :]
 
-      max_frames = 140.0
+      max_frames = 100.0
       if current_feat.shape[0] > max_frames:
         ind = np.arange(0, current_feat.shape[0], current_feat.shape[0]/max_frames).astype(int).tolist()
         current_feat = current_feat[ind,:]
