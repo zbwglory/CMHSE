@@ -42,6 +42,10 @@ class PrecompDataset(data.Dataset):
 
     clips = []
 
+    prev_time = None
+    groups = []
+    group_count = 1
+
     for seg_id in range(segment_number):
       picked_segment = self.jsondict[cur_vid]['times'][seg_id]
       start_frame = picked_segment[0]
@@ -51,14 +55,27 @@ class PrecompDataset(data.Dataset):
           end_frame=video_feat.shape[0] 
           start_frame=0 
 
+      if prev_time != None:
+        if start_frame == prev_time[0] and end_frame == prev_time[1]:
+          group_count = group_count + 1
+        else:
+          groups.append(group_count)
+          group_count = 1
+          prev_time = [start_frame, end_frame]
+      else:
+        group_count = 1
+        prev_time = [start_frame, end_frame]
+
       current_feat = video_feat[start_frame: end_frame+1, :]
 
-      max_frames = 100.0
+      max_frames = 80.0
       if current_feat.shape[0] > max_frames:
         ind = np.arange(0, current_feat.shape[0], current_feat.shape[0]/max_frames).astype(int).tolist()
         current_feat = current_feat[ind,:]
 
       clips.append(current_feat)
+
+    groups.append(group_count)
 
     video = video_feat
     if video.shape[0] > max_frames:
@@ -88,8 +105,10 @@ class PrecompDataset(data.Dataset):
 
     lengths_clip = torch.Tensor(lengths_clip).long()
     lengths_cap = torch.Tensor(lengths_cap).long()
+    
+    groups = torch.from_numpy(np.array(groups)).long()
 
-    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption
+    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption, groups
 
   def __getitem__(self, index):
     # handle the image redundancy
@@ -99,15 +118,15 @@ class PrecompDataset(data.Dataset):
     caption_json = self.jsondict[cur_vid]['description']
 
     clips, captions, video, paragraph, lengths_clip, lengths_cap, \
-      num_clip, num_caption = self.img_cap_feat_combine(image, caption_json, cur_vid)
+      num_clip, num_caption, groups = self.img_cap_feat_combine(image, caption_json, cur_vid)
 
-    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption, index
+    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption, index, groups
 
   def __len__(self):
     return self.length
 
 def collate_fn(data_batch):
-  _clips, _captions, _video, _paragraph, _lengths_clip, _lengths_cap, _num_clip, _num_caption, _index = zip(*data_batch)
+  _clips, _captions, _video, _paragraph, _lengths_clip, _lengths_cap, _num_clip, _num_caption, _index, groups = zip(*data_batch)
 
   # Merge images
   lengths_clip = torch.cat(_lengths_clip, 0)
@@ -141,7 +160,9 @@ def collate_fn(data_batch):
     end = lengths_paragraph[i]
     paragraphs[i, :end] = cap[:end ]
 
-  return clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, _num_clip, _num_caption, _index
+  groups = torch.cat(groups)
+
+  return clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, _num_clip, _num_caption, _index, groups
 
 def get_precomp_loader(data_path, data_split, vocab, opt, batch_size=100,
              shuffle=True, num_workers=2):
