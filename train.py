@@ -163,7 +163,7 @@ def main():
       'best_rsum': best_rsum,
       'opt': opt,
       'Eiters': model.Eiters,
-    }, is_best, prefix=opt.logger_name + '/')
+    }, is_best, prefix=opt.logger_name + '/', epoch=epoch)
 
 
 def train(opt, train_loader, model, epoch, val_loader):
@@ -225,9 +225,9 @@ def validate(opt, val_loader, model):
   cap_clip_rep, _, _ = t2i(clip_embs, cap_embs, measure=opt.measure)
 
   # caption retrieval
-  vid_seq_rep, _, _  = i2t(vid_seq_embs, para_seq_embs, measure=opt.measure)
+  vid_seq_rep, _, rank_vid_v2p  = i2t(vid_seq_embs, para_seq_embs, measure=opt.measure)
   # image retrieval
-  para_seq_rep, _, _ = t2i(vid_seq_embs, para_seq_embs, measure=opt.measure)
+  para_seq_rep, _, rank_para_p2v = t2i(vid_seq_embs, para_seq_embs, measure=opt.measure)
 
   # sum of recalls to be used for early stopping
   currscore = vid_seq_rep['sum'] + para_seq_rep['sum']
@@ -251,10 +251,10 @@ def validate(opt, val_loader, model):
 
   return currscore
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar', prefix=''):
-  torch.save(state, prefix + filename)
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar', epoch=0, prefix=''):
+  torch.save(state, prefix + str(epoch) + filename)
   if is_best:
-    shutil.copyfile(prefix + filename, prefix + 'model_best.pth.tar')
+    shutil.copyfile(prefix + str(epoch) + filename, prefix + 'model_best.pth.tar')
 
 
 def adjust_learning_rate(opt, optimizer, epoch):

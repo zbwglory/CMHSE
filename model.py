@@ -38,7 +38,7 @@ class EncoderImage(nn.Module):
     outputs = self.rnn(x, lengths)
 
     # normalization in the joint embedding space
-    return outputs
+    return F.normalize(outputs)
 
 class EncoderSequence(nn.Module):
   def __init__(self, img_dim, embed_size, bidirectional=False, rnn_type='maxout'):
@@ -60,7 +60,7 @@ class EncoderSequence(nn.Module):
     outputs = self.rnn(x, lengths, hidden)
 
     # normalization in the joint embedding space
-    return outputs
+    return F.normalize(outputs)
 
 class EncoderText(nn.Module):
   def __init__(self, vocab_size, word_dim, embed_size,
@@ -93,7 +93,7 @@ class EncoderText(nn.Module):
     outputs = self.rnn(cap_emb, lengths)
 
     # normalization in the joint embedding space
-    return outputs, cap_emb
+    return F.normalize(outputs), cap_emb
 
 class VSE(object):
   def __init__(self, opt):
@@ -308,34 +308,33 @@ class VSE(object):
     # measure accuracy and record loss
     self.optimizer.zero_grad()
 
-    loss_1 = self.forward_loss(F.normalize(vid_emb), F.normalize(para_emb), '_vid')
+    loss_1 = self.forward_loss(vid_emb, para_emb, '_vid')
     if opts.loss_2:
         if opts.no_correspond:
-          loss_2 = self.forward_loss_group(F.normalize(clip_emb), F.normalize(cap_emb), num_clips, num_caps, '_clip')
+          loss_2 = self.forward_loss_group(clip_emb, cap_emb, num_clips, num_caps, '_clip')
         else:
-          loss_2 = self.forward_loss(F.normalize(clip_emb), F.normalize(cap_emb), '_clip')
+          loss_2 = self.forward_loss(clip_emb, cap_emb, '_clip')
     else:
         loss_2 = 0
 
     if opts.loss_3:
-        loss_3 = self.forward_loss(F.normalize(vid_context), F.normalize(para_context), '_context')
+        loss_3 = self.forward_loss(vid_context, para_context, '_context')
     else:
         loss_3 = 0
 
     if opts.loss_5:
-        loss_5 = self.forward_loss(F.normalize(vid_emb), F.normalize(vid_emb), '_ex_vid') + self.forward_loss(F.normalize(para_emb), F.normalize(para_emb), '_ex_para')
+        loss_5 = self.forward_loss(vid_emb, vid_emb, '_ex_vid') + self.forward_loss(para_emb, para_emb, '_ex_para')
     else:
         loss_5 = 0
 
     if opts.low_level_indomain:
         groups = groups.numpy().tolist()
-        loss_6 = self.forward_loss_group(F.normalize(clip_emb), F.normalize(clip_emb), groups, groups, '_ex_clip') + self.forward_loss(F.normalize(cap_emb), F.normalize(cap_emb), '_ex_cap')
-        #loss_6 = self.forward_loss(F.normalize(clip_emb), F.normalize(clip_emb), '_ex_clip') + self.forward_loss(F.normalize(cap_emb), F.normalize(cap_emb), '_ex_cap')
+        loss_6 = self.forward_loss_group(clip_emb, clip_emb, groups, groups, '_ex_clip') + self.forward_loss_group(cap_emb, cap_emb, groups, groups, '_ex_cap') 
     else:
         loss_6 = 0
 
     if opts.reconstruct_term:
-        loss_reconstruct = self.forward_reconstruct_loss(F.normalize(clip_reconstruct), F.normalize(clip_emb).detach(), '_reconstruct_clip', lengths_video) + self.forward_reconstruct_loss(F.normalize(cap_reconstruct), F.normalize(cap_emb).detach(), '_reconstruct_cap', lengths_paragraph)
+        loss_reconstruct = self.forward_reconstruct_loss(clip_reconstruct, clip_emb.detach(), '_reconstruct_clip', lengths_video) + self.forward_reconstruct_loss(cap_reconstruct, cap_emb.detach(), '_reconstruct_cap', lengths_paragraph)
     else:
         loss_reconstruct = 0
 
@@ -354,12 +353,10 @@ class VSE(object):
             words_var[curpos: curpos+lengths_cap[i],:] = word[i,0:lengths_cap[i],:]
             curpos = curpos + lengths_cap[i]
 
-        loss_lowest_reconstruct_hier = self.forward_reconstruct_loss(F.normalize(frame_reconstruct_hier), F.normalize(Variable(clips_var).cuda()).detach(), '_reconstruct_frame_hier', lengths_clip) + self.forward_reconstruct_loss(F.normalize(word_reconstruct_hier), F.normalize(words_var).detach(), '_reconstruct_word_hier', lengths_cap)
+        loss_lowest_reconstruct_hier = self.forward_reconstruct_loss(frame_reconstruct_hier, Variable(clips_var).cuda().detach(), '_reconstruct_frame_hier', lengths_clip) + self.forward_reconstruct_loss(word_reconstruct_hier, words_var.detach(), '_reconstruct_word_hier', lengths_cap)
     else:
-#        loss_lowest_reconstruct= 0
         loss_lowest_reconstruct_hier= 0
 
-    #loss = loss_1 + loss_2 + loss_3 + loss_5 + loss_reconstruct + loss_lowest_reconstruct + loss_lowest_reconstruct_hier + loss_6
     loss = loss_1 + loss_2 + loss_3 + loss_5 + loss_reconstruct + loss_lowest_reconstruct_hier + loss_6
 
     # compute gradient and do SGD step

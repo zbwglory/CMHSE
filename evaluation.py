@@ -106,12 +106,12 @@ def encode_data(model, data_loader, log_step=10, logging=print, contextual_model
       vid_emb, para_emb = model.structure_emb(clip_emb, cap_emb, num_clips, num_caps)
 
     # initialize the numpy arrays given the size of the embeddings
-    clip_embs.extend(F.normalize(clip_emb).data.cpu())
-    cap_embs.extend(F.normalize(cap_emb).data.cpu())
-    vid_embs.extend(F.normalize(vid_emb).data.cpu())
-    para_embs.extend(F.normalize(para_emb).data.cpu())
-    vid_contexts.extend(F.normalize(vid_context).data.cpu())
-    para_contexts.extend(F.normalize(para_context).data.cpu())
+    clip_embs.extend(clip_emb.data.cpu())
+    cap_embs.extend(cap_emb.data.cpu())
+    vid_embs.extend(vid_emb.data.cpu())
+    para_embs.extend(para_emb.data.cpu())
+    vid_contexts.extend(vid_context.data.cpu())
+    para_contexts.extend(para_context.data.cpu())
 
     # measure accuracy and record loss
     model.forward_loss(vid_emb, para_emb, 'test')
