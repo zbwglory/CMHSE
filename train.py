@@ -97,8 +97,14 @@ def main():
 
   torch.cuda.set_device(opt.gpu_id)
 
-  logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
   tb_logger.configure(opt.logger_name, flush_secs=5)
+  logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO, filename=opt.logger_name+'/log.log')
+  console = logging.StreamHandler()
+  console.setLevel(logging.INFO)
+  formatter = logging.Formatter('%(asctime)s %(message)s')
+  console.setFormatter(formatter)
+  logging.getLogger('').addHandler(console)
+
 
   # Load Vocabulary Wrapper
   vocab_path = os.path.join(opt.vocab_path, '%s_vocab_total.pkl' % opt.data_name)
@@ -118,9 +124,6 @@ def main():
   print(model.txt_enc)
   print(model.vid_seq_enc)
   print(model.txt_seq_enc)
-  if opt.reconstruct_term:
-    print(model.vid_seq_dec)
-    print(model.txt_seq_dec)
 
   start_epoch = 0
   # optionally resume from a checkpoint
