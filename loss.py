@@ -103,7 +103,7 @@ class ContrastiveLoss(nn.Module):
       cost_s = cost_s.max(1)[0]
       cost_im = cost_im.max(0)[0]
 
-    return cost_s.sum() + cost_im.sum()
+    return (cost_s.sum() + cost_im.sum()).div(im.shape[0])
     # return cost_s.sum()
 
 

@@ -5,8 +5,8 @@ import shutil
 
 import torch
 
-# import activity_net.data as data
-import didemo_dev.data as data
+import activity_net.data as data
+# import didemo_dev.data as data
 from anet_vocab import Vocabulary
 from model import VSE
 from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter
@@ -17,9 +17,6 @@ import tensorboard_logger as tb_logger
 import argparse
 
 from IPython import embed
-
-torch.cuda.manual_seed_all(1)
-torch.manual_seed(1)
 
 def main():
   # Hyper Parameters
@@ -216,7 +213,7 @@ def train(opt, train_loader, model, epoch, val_loader):
 
 def validate(opt, val_loader, model):
   # compute the encoding for all the validation images and captions
-  vid_seq_embs, para_seq_embs, clip_embs, cap_embs, _, _ = encode_data(
+  vid_seq_embs, para_seq_embs, clip_embs, cap_embs, _, _, num_clips = encode_data(
     model, val_loader, opt.log_step, logging.info, contextual_model=True)
 
   # caption retrieval

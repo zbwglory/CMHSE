@@ -13,9 +13,6 @@ from IPython import embed
 
 from layers import *
 from loss import *
-from decoder.layers import *
-from decoder.model import *
-from decoder.loss import *
 import time
 
 class EncoderImage(nn.Module):
@@ -38,7 +35,8 @@ class EncoderImage(nn.Module):
     outputs = self.rnn(x, lengths)
 
     # normalization in the joint embedding space
-    return F.normalize(outputs)
+#    return F.normalize(outputs)
+    return outputs
 
 class EncoderSequence(nn.Module):
   def __init__(self, img_dim, embed_size, bidirectional=False, rnn_type='maxout'):
@@ -60,7 +58,8 @@ class EncoderSequence(nn.Module):
     outputs = self.rnn(x, lengths, hidden)
 
     # normalization in the joint embedding space
-    return F.normalize(outputs)
+#    return F.normalize(outputs)
+    return outputs
 
 class EncoderText(nn.Module):
   def __init__(self, vocab_size, word_dim, embed_size,
@@ -93,7 +92,8 @@ class EncoderText(nn.Module):
     outputs = self.rnn(cap_emb, lengths)
 
     # normalization in the joint embedding space
-    return F.normalize(outputs), cap_emb
+#    return F.normalize(outputs), cap_emb
+    return outputs, cap_emb
 
 class VSE(object):
   def __init__(self, opt):
@@ -107,46 +107,23 @@ class VSE(object):
     self.txt_seq_enc = EncoderSequence(opt.cap_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
 
-    self.vid_seq_dec = DecoderSequence(opt.embed_size, opt.img_first_size,
-                  rnn_type=opt.decode_rnn_type)
-    self.txt_seq_dec = DecoderSequence(opt.embed_size, opt.cap_first_size,
-                  rnn_type=opt.decode_rnn_type)
-
-
-    self.frame_seq_dec_hier = DecoderSequence(opt.embed_size, opt.img_dim,
-                  rnn_type=opt.decode_rnn_type)
-    self.word_seq_dec_hier = DecoderSequence(opt.embed_size, opt.word_dim,
-                  rnn_type=opt.decode_rnn_type)
-
  
     if torch.cuda.is_available():
       self.clip_enc.cuda()
       self.txt_enc.cuda()
       self.vid_seq_enc.cuda()
       self.txt_seq_enc.cuda()
-      self.vid_seq_dec.cuda()
-      self.txt_seq_dec.cuda()
-      self.frame_seq_dec_hier.cuda()
-      self.word_seq_dec_hier.cuda()
       cudnn.benchmark = True
 
     # Loss and Optimizer
     self.criterion = ContrastiveLoss(margin=opt.margin,
                      measure=opt.measure,
                      max_violation=opt.max_violation)
-    self.criterion_group = GroupWiseContrastiveLoss(margin=opt.margin,
-                     measure=opt.measure,
-                     max_violation=opt.max_violation)
-    self.criterion_Euclid_Distance = EuclideanLoss()
 
     params = list(self.txt_enc.parameters())
     params += list(self.clip_enc.parameters())
     params += list(self.vid_seq_enc.parameters())
     params += list(self.txt_seq_enc.parameters())
-    params += list(self.vid_seq_dec.parameters())
-    params += list(self.txt_seq_dec.parameters())
-    params += list(self.frame_seq_dec_hier.parameters())
-    params += list(self.word_seq_dec_hier.parameters())
     self.params = params
 
     self.optimizer = torch.optim.Adam(params, lr=opt.learning_rate)
@@ -155,9 +132,7 @@ class VSE(object):
 
   def state_dict(self):
     state_dict = [self.clip_enc.state_dict(), self.txt_enc.state_dict(), \
-                  self.vid_seq_enc.state_dict(), self.txt_seq_enc.state_dict(), \
-                  self.vid_seq_dec.state_dict(), self.txt_seq_dec.state_dict(), \
-                  self.frame_seq_dec_hier.state_dict(), self.word_seq_dec_hier.state_dict()]
+                  self.vid_seq_enc.state_dict(), self.txt_seq_enc.state_dict()]
     return state_dict
 
   def load_state_dict(self, state_dict):
@@ -165,10 +140,6 @@ class VSE(object):
     self.txt_enc.load_state_dict(state_dict[1])
     self.vid_seq_enc.load_state_dict(state_dict[2])
     self.txt_seq_enc.load_state_dict(state_dict[3])
-    self.vid_seq_dec.load_state_dict(state_dict[4])
-    self.txt_seq_dec.load_state_dict(state_dict[5])
-    self.frame_seq_dec_hier.load_state_dict(state_dict[6])
-    self.word_seq_dec_hier.load_state_dict(state_dict[7])
 
   def train_start(self):
     """switch to train mode
@@ -177,10 +148,6 @@ class VSE(object):
     self.txt_enc.train()
     self.vid_seq_enc.train()
     self.txt_seq_enc.train()
-    self.vid_seq_dec.train()
-    self.txt_seq_dec.train()
-    self.frame_seq_dec_hier.train()
-    self.word_seq_dec_hier.train()
 
   def val_start(self):
     """switch to evaluate mode
@@ -189,10 +156,6 @@ class VSE(object):
     self.txt_enc.eval()
     self.vid_seq_enc.eval()
     self.txt_seq_enc.eval()
-    self.vid_seq_dec.eval()
-    self.txt_seq_dec.eval()
-    self.frame_seq_dec_hier.eval()
-    self.word_seq_dec_hier.eval()
 
   def forward_emb(self, clips, captions, lengths_clip, lengths_cap, return_word=False):
     clips    = Variable(clips)
@@ -229,41 +192,6 @@ class VSE(object):
 
     return vid_emb, para_emb
 
-  def reconstruct_emb(self, vid_emb, para_emb, num_clips, num_caps):
-    vid_reshape_emb = Variable(torch.zeros(len(num_clips), max(num_clips), vid_emb.shape[1])).cuda()
-    para_reshape_emb = Variable(torch.zeros(len(num_caps),  max(num_caps),  para_emb.shape[1])).cuda()
-
-    for i, end_place in enumerate(num_clips):
-        vid_reshape_emb[i, :end_place, :] = vid_emb[i].expand(1, end_place, vid_emb.shape[1])
-
-    for i, end_place in enumerate(num_caps):
-        para_reshape_emb[i, :end_place, :] = para_emb[i,:].expand(1, end_place, para_emb.shape[1])
-
-    vid_emb  = self.vid_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
-    para_emb = self.txt_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
-
-    return vid_emb, para_emb
-
-
-  def lowest_reconstruct_emb(self, vid_emb, para_emb, num_clips, num_caps, hier):
-    vid_reshape_emb = Variable(torch.zeros(len(num_clips), max(num_clips), vid_emb.shape[1])).cuda()
-    para_reshape_emb = Variable(torch.zeros(len(num_caps),  max(num_caps),  para_emb.shape[1])).cuda()
-
-    for i, end_place in enumerate(num_clips):
-        vid_reshape_emb[i, :end_place, :] = vid_emb[i].view(1,1,-1).expand(1, end_place, vid_emb.shape[1])
-
-    for i, end_place in enumerate(num_caps):
-        para_reshape_emb[i, :end_place, :] = para_emb[i,:].view(1,1,-1).expand(1, end_place, para_emb.shape[1])
-
-    if hier==True:
-        vid_emb  = self.frame_seq_dec_hier(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
-        para_emb = self.word_seq_dec_hier(para_reshape_emb, Variable(torch.Tensor(num_caps)))
-    else:
-        vid_emb  = self.frame_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
-        para_emb = self.word_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
-
-    return vid_emb, para_emb
-
   def forward_loss(self, clip_emb, cap_emb, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
     """
@@ -271,23 +199,9 @@ class VSE(object):
     self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
     return loss
 
-  def forward_loss_group(self, clip_emb, cap_emb, num_clips, num_caps, name, **kwargs):
-    """Compute the loss given pairs of image and caption embeddings
-    """
-    loss = self.criterion_group(clip_emb, cap_emb, num_clips, num_caps)
-    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
-    return loss
-
-  def forward_reconstruct_loss(self, vid_emb, clip_emb, name, num_list, **kwargs):
-    """Compute the loss given pairs of image and caption embeddings
-    """
-    loss = self.criterion_Euclid_Distance(vid_emb, clip_emb, num_list)
-    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
-    return loss
-
   def train_emb(self, opts, clips, captions, videos, paragraphs,
       lengths_clip, lengths_cap, lengths_video, lengths_paragraph,
-      num_clips, num_caps, ind, groups, *args):
+      num_clips, num_caps, ind, *args):
     """One training step given clips and captions.
     """
     self.Eiters += 1
@@ -299,65 +213,16 @@ class VSE(object):
     vid_context, para_context = self.forward_emb(videos, paragraphs, lengths_video, lengths_paragraph)
     vid_emb, para_emb = self.structure_emb(clip_emb, cap_emb, num_clips, num_caps, vid_context, para_context)
 
-    if opts.reconstruct_term:
-        clip_reconstruct, cap_reconstruct = self.reconstruct_emb(vid_emb, para_emb, num_clips, num_caps)
-
-    if opts.lowest_reconstruct_term:
-        frame_reconstruct_hier, word_reconstruct_hier = self.lowest_reconstruct_emb(clip_reconstruct, cap_reconstruct, lengths_clip.numpy(), lengths_cap.numpy(), True)
-
     # measure accuracy and record loss
     self.optimizer.zero_grad()
 
-    loss_1 = self.forward_loss(vid_emb, para_emb, '_vid')
+    loss = 0
+
+    loss_1 = self.forward_loss(F.normalize(vid_emb), F.normalize(para_emb), '_vid')
+    loss = loss + loss_1
     if opts.loss_2:
-        if opts.no_correspond:
-          loss_2 = self.forward_loss_group(clip_emb, cap_emb, num_clips, num_caps, '_clip')
-        else:
-          loss_2 = self.forward_loss(clip_emb, cap_emb, '_clip')
-    else:
-        loss_2 = 0
-
-    if opts.loss_3:
-        loss_3 = self.forward_loss(vid_context, para_context, '_context')
-    else:
-        loss_3 = 0
-
-    if opts.loss_5:
-        loss_5 = self.forward_loss(vid_emb, vid_emb, '_ex_vid') + self.forward_loss(para_emb, para_emb, '_ex_para')
-    else:
-        loss_5 = 0
-
-    if opts.low_level_indomain:
-        groups = groups.numpy().tolist()
-        loss_6 = self.forward_loss_group(clip_emb, clip_emb, groups, groups, '_ex_clip') + self.forward_loss_group(cap_emb, cap_emb, groups, groups, '_ex_cap') 
-    else:
-        loss_6 = 0
-
-    if opts.reconstruct_term:
-        loss_reconstruct = self.forward_reconstruct_loss(clip_reconstruct, clip_emb.detach(), '_reconstruct_clip', lengths_video) + self.forward_reconstruct_loss(cap_reconstruct, cap_emb.detach(), '_reconstruct_cap', lengths_paragraph)
-    else:
-        loss_reconstruct = 0
-
-    if opts.lowest_reconstruct_term:
-
-        clips_var = torch.zeros(lengths_clip.sum(), clips.shape[2])
-        curpos = 0
-        for i in range(clips.shape[0]):
-            clips_var[curpos: curpos+lengths_clip[i],:] = clips[i,0:lengths_clip[i],:]
-            curpos = curpos + lengths_clip[i]
-
-
-        words_var = Variable(torch.zeros(lengths_cap.sum(), 300)).cuda()
-        curpos = 0
-        for i in range(captions.shape[0]):
-            words_var[curpos: curpos+lengths_cap[i],:] = word[i,0:lengths_cap[i],:]
-            curpos = curpos + lengths_cap[i]
-
-        loss_lowest_reconstruct_hier = self.forward_reconstruct_loss(frame_reconstruct_hier, Variable(clips_var).cuda().detach(), '_reconstruct_frame_hier', lengths_clip) + self.forward_reconstruct_loss(word_reconstruct_hier, words_var.detach(), '_reconstruct_word_hier', lengths_cap)
-    else:
-        loss_lowest_reconstruct_hier= 0
-
-    loss = loss_1 + loss_2 + loss_3 + loss_5 + loss_reconstruct + loss_lowest_reconstruct_hier + loss_6
+        loss_2 = self.forward_loss(F.normalize(clip_emb), F.normalize(cap_emb), '_low_lvel')
+        loss = loss + loss_2
 
     # compute gradient and do SGD step
     loss.backward()

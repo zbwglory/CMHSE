@@ -91,11 +91,12 @@ def encode_data(model, data_loader, log_step=10, logging=print, contextual_model
   # numpy array to keep all the embeddings
   clip_embs, cap_embs = [], []
   vid_embs, para_embs = [], []
-  img_seq_recast_embs, cap_seq_recast_embs = [], []
   vid_contexts, para_contexts = [], []
-  for i, (clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, num_clips, num_caps, ind, _) in enumerate(data_loader):
+  num_clips_total = []
+  for i, (clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, num_clips, num_caps, ind) in enumerate(data_loader):
     # make sure val logger is used
     model.logger = val_logger
+    num_clips_total.extend(num_clips)
 
     # compute the embeddings
     clip_emb, cap_emb = model.forward_emb(clips, captions, lengths_clip, lengths_cap)
@@ -104,6 +105,13 @@ def encode_data(model, data_loader, log_step=10, logging=print, contextual_model
       vid_emb, para_emb = model.structure_emb(clip_emb, cap_emb, num_clips, num_caps, vid_context, para_context)
     else:
       vid_emb, para_emb = model.structure_emb(clip_emb, cap_emb, num_clips, num_caps)
+
+    clip_emb = F.normalize(clip_emb)
+    cap_emb = F.normalize(cap_emb)
+    vid_emb = F.normalize(vid_emb)
+    para_emb = F.normalize(para_emb)
+    vid_context = F.normalize(vid_context)
+    para_context = F.normalize(para_context)
 
     # initialize the numpy arrays given the size of the embeddings
     clip_embs.extend(clip_emb.data.cpu())
@@ -143,7 +151,7 @@ def encode_data(model, data_loader, log_step=10, logging=print, contextual_model
   vid_contexts  = vid_contexts.numpy()
   para_contexts = para_contexts.numpy()
 
-  return vid_embs, para_embs, clip_embs, cap_embs, vid_contexts, para_contexts
+  return vid_embs, para_embs, clip_embs, cap_embs, vid_contexts, para_contexts, num_clips_total
 
 def i2t(images, captions, npts=None, measure='cosine'):
   npts = images.shape[0]
