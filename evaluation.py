@@ -106,12 +106,14 @@ def encode_data(model, data_loader, log_step=10, logging=print, contextual_model
     else:
       vid_emb, para_emb = model.structure_emb(clip_emb, cap_emb, num_clips, num_caps)
 
+
     clip_emb = F.normalize(clip_emb)
     cap_emb = F.normalize(cap_emb)
     vid_emb = F.normalize(vid_emb)
     para_emb = F.normalize(para_emb)
     vid_context = F.normalize(vid_context)
     para_context = F.normalize(para_context)
+
 
     # initialize the numpy arrays given the size of the embeddings
     clip_embs.extend(clip_emb.data.cpu())

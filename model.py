@@ -222,7 +222,7 @@ class VSE(object):
     loss = loss + loss_1
     if opts.loss_2:
         loss_2 = self.forward_loss(F.normalize(clip_emb), F.normalize(cap_emb), '_low_lvel')
-        loss = loss + loss_2
+        loss = loss + loss_2*opts.other_loss_weight
 
     # compute gradient and do SGD step
     loss.backward()
