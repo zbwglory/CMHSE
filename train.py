@@ -87,7 +87,7 @@ def main():
   parser.add_argument('--loss_2', action='store_true')
   parser.add_argument('--loss_3', action='store_true')
   parser.add_argument('--loss_5', action='store_true')
-  parser.add_argument('--low_level_indomain', action='store_true')
+  parser.add_argument('--loss_6', action='store_true')
   parser.add_argument('--no_correspond', action='store_true')
   parser.add_argument('--reconstruct_term', action='store_true')
   parser.add_argument('--lowest_reconstruct_term', action='store_true')
@@ -215,41 +215,41 @@ def train(opt, train_loader, model, epoch, val_loader):
 
 
 def validate(opt, val_loader, model):
-  # compute the encoding for all the validation images and captions
-  vid_seq_embs, para_seq_embs, clip_embs, cap_embs, _, _, num_clips = encode_data(
-    model, val_loader, opt.log_step, logging.info, contextual_model=True)
+    # compute the encoding for all the validation images and captions
+    vid_seq_embs, para_seq_embs, clip_embs, cap_embs, _, _, num_clips, cur_vid_total = encode_data(
+        model, val_loader, opt.log_step, logging.info, contextual_model=True)
 
-  # caption retrieval
-  vid_clip_rep, _, _ = i2t(clip_embs, cap_embs, measure=opt.measure)
-  # image retrieval
-  cap_clip_rep, _, _ = t2i(clip_embs, cap_embs, measure=opt.measure)
+    # caption retrieval
+    vid_clip_rep, _, _ = i2t(clip_embs, cap_embs, measure=opt.measure)
+    # image retrieval
+    cap_clip_rep, _, _ = t2i(clip_embs, cap_embs, measure=opt.measure)
 
-  # caption retrieval
-  vid_seq_rep, _, rank_vid_v2p  = i2t(vid_seq_embs, para_seq_embs, measure=opt.measure)
-  # image retrieval
-  para_seq_rep, _, rank_para_p2v = t2i(vid_seq_embs, para_seq_embs, measure=opt.measure)
+    # caption retrieval
+    vid_seq_rep, top1_v2p, rank_vid_v2p  = i2t(vid_seq_embs, para_seq_embs, measure=opt.measure)
+    # image retrieval
+    para_seq_rep, top1_p2v, rank_para_p2v = t2i(vid_seq_embs, para_seq_embs, measure=opt.measure)
 
-  # sum of recalls to be used for early stopping
-  currscore = vid_seq_rep['sum'] + para_seq_rep['sum']
+    # sum of recalls to be used for early stopping
+    currscore = vid_seq_rep['sum'] + para_seq_rep['sum']
 
-  logging.info("Clip to Sent: %.1f, %.1f, %.1f, %.1f, %.1f" %
+    logging.info("Clip to Sent: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (vid_clip_rep['r1'], vid_clip_rep['r5'], vid_clip_rep['r10'], vid_clip_rep['medr'], vid_clip_rep['meanr']))
-  logging.info("Sent to Clip: %.1f, %.1f, %.1f, %.1f, %.1f" %
+    logging.info("Sent to Clip: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (cap_clip_rep['r1'], cap_clip_rep['r5'], cap_clip_rep['r10'], cap_clip_rep['medr'], cap_clip_rep['meanr']))
-  logging.info("Video to Paragraph: %.1f, %.1f, %.1f, %.1f, %.1f" %
+    logging.info("Video to Paragraph: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (vid_seq_rep['r1'], vid_seq_rep['r5'], vid_seq_rep['r10'], vid_seq_rep['medr'], vid_seq_rep['meanr']))
-  logging.info("Paragraph to Video: %.1f, %.1f, %.1f, %.1f, %.1f" %
+    logging.info("Paragraph to Video: %.1f, %.1f, %.1f, %.1f, %.1f" %
          (para_seq_rep['r1'], para_seq_rep['r5'], para_seq_rep['r10'], para_seq_rep['medr'], para_seq_rep['meanr']))
-  logging.info("Currscore: %.1f" % (currscore))
+    logging.info("Currscore: %.1f" % (currscore))
 
-  # record metrics in tensorboard
-  LogReporter(tb_logger, vid_clip_rep, model.Eiters, 'clip')
-  LogReporter(tb_logger, cap_clip_rep, model.Eiters, 'clipi')
-  LogReporter(tb_logger, vid_seq_rep, model.Eiters, 'seq')
-  LogReporter(tb_logger, para_seq_rep, model.Eiters, 'seqi')
-  tb_logger.log_value('rsum', currscore, step=model.Eiters)
+    # record metrics in tensorboard
+    LogReporter(tb_logger, vid_clip_rep, model.Eiters, 'clip')
+    LogReporter(tb_logger, cap_clip_rep, model.Eiters, 'clipi')
+    LogReporter(tb_logger, vid_seq_rep, model.Eiters, 'seq')
+    LogReporter(tb_logger, para_seq_rep, model.Eiters, 'seqi')
+    tb_logger.log_value('rsum', currscore, step=model.Eiters)
 
-  return currscore
+    return currscore
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar', epoch=0, prefix=''):
   torch.save(state, prefix + str(epoch) + filename)

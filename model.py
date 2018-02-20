@@ -35,7 +35,7 @@ class EncoderImage(nn.Module):
     outputs = self.rnn(x, lengths)
 
     # normalization in the joint embedding space
-#    return F.normalize(outputs)
+    # return F.normalize(outputs)
     return outputs
 
 class EncoderSequence(nn.Module):
@@ -58,7 +58,7 @@ class EncoderSequence(nn.Module):
     outputs = self.rnn(x, lengths, hidden)
 
     # normalization in the joint embedding space
-#    return F.normalize(outputs)
+    # return F.normalize(outputs)
     return outputs
 
 class EncoderText(nn.Module):
@@ -92,7 +92,7 @@ class EncoderText(nn.Module):
     outputs = self.rnn(cap_emb, lengths)
 
     # normalization in the joint embedding space
-#    return F.normalize(outputs), cap_emb
+    # return F.normalize(outputs), cap_emb
     return outputs, cap_emb
 
 class VSE(object):
@@ -100,14 +100,13 @@ class VSE(object):
     self.grad_clip = opt.grad_clip
     self.clip_enc = EncoderImage(opt.img_dim, opt.img_first_size,
                   rnn_type=opt.rnn_type)
-    self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim, opt.cap_first_size, 
+    self.txt_enc = EncoderText(opt.vocab_size, opt.word_dim, opt.cap_first_size,
                   rnn_type=opt.rnn_type, data_name = opt.data_name)
     self.vid_seq_enc = EncoderSequence(opt.img_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
     self.txt_seq_enc = EncoderSequence(opt.cap_first_size, opt.embed_size,
                   rnn_type=opt.rnn_type)
 
- 
     if torch.cuda.is_available():
       self.clip_enc.cuda()
       self.txt_enc.cuda()
@@ -187,8 +186,8 @@ class VSE(object):
       cap_reshape_emb[i, 0:end_place, :] = cap_emb[cur_displace : cur_displace + end_place, :]
       cur_displace = cur_displace + end_place
 
-    vid_emb  = self.vid_seq_enc(img_reshape_emb, Variable(torch.Tensor(num_clips)), vid_context)
-    para_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(num_caps)), para_context)
+    vid_emb  = self.vid_seq_enc(img_reshape_emb, Variable(torch.Tensor(num_clips).long()), vid_context)
+    para_emb = self.txt_seq_enc(cap_reshape_emb, Variable(torch.Tensor(num_caps).long()), para_context)
 
     return vid_emb, para_emb
 
@@ -201,7 +200,7 @@ class VSE(object):
 
   def train_emb(self, opts, clips, captions, videos, paragraphs,
       lengths_clip, lengths_cap, lengths_video, lengths_paragraph,
-      num_clips, num_caps, ind, *args):
+      num_clips, num_caps, ind, cur_vid, *args):
     """One training step given clips and captions.
     """
     self.Eiters += 1
@@ -223,6 +222,14 @@ class VSE(object):
     if opts.loss_2:
         loss_2 = self.forward_loss(F.normalize(clip_emb), F.normalize(cap_emb), '_low_lvel')
         loss = loss + loss_2*opts.other_loss_weight
+    if opts.loss_5:
+        loss_5 = (self.forward_loss(F.normalize(vid_emb), F.normalize(vid_emb), '_vid_inloss') + self.forward_loss(F.normalize(para_emb), F.normalize(para_emb), '_para_inloss'))/2
+        loss = loss + loss_5
+
+    if opts.loss_6:
+        loss_6 = (self.forward_loss(F.normalize(clip_emb), F.normalize(clip_emb), '_clip_inloss') + self.forward_loss(F.normalize(cap_emb), F.normalize(cap_emb), '_cap_inloss'))/2
+        loss = loss + loss_6
+
 
     # compute gradient and do SGD step
     loss.backward()

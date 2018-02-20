@@ -101,13 +101,13 @@ class PrecompDataset(data.Dataset):
     clips, captions, video, paragraph, lengths_clip, lengths_cap, \
       num_clip, num_caption = self.img_cap_feat_combine(image, caption_json, cur_vid)
 
-    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption, index
+    return clips, captions, video, paragraph, lengths_clip, lengths_cap, num_clip, num_caption, index, cur_vid
 
   def __len__(self):
     return self.length
 
 def collate_fn(data_batch):
-  _clips, _captions, _video, _paragraph, _lengths_clip, _lengths_cap, _num_clip, _num_caption, _index = zip(*data_batch)
+  _clips, _captions, _video, _paragraph, _lengths_clip, _lengths_cap, _num_clip, _num_caption, _index, _cur_vid = zip(*data_batch)
 
   # Merge images
   lengths_clip = torch.cat(_lengths_clip, 0)
@@ -140,10 +140,10 @@ def collate_fn(data_batch):
   for i, cap in enumerate(_paragraph):
     end = lengths_paragraph[i]
     paragraphs[i, :end] = cap[:end ]
-  
+
   #embed()
 
-  return clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, _num_clip, _num_caption, _index 
+  return clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, _num_clip, _num_caption, _index, _cur_vid
 
 def get_precomp_loader(data_path, data_split, vocab, opt, batch_size=100,
              shuffle=True, num_workers=2):

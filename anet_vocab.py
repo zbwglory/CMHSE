@@ -23,7 +23,6 @@ class Vocabulary(object):
     def add_word(self, word):
         if word not in self.word2idx:
             if word in glove:
-#                print word
                 self.word2idx[word] = self.idx
                 self.idx2word[self.idx] = word
                 self.idx += 1
