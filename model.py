@@ -221,14 +221,14 @@ class VSE(object):
     loss = loss + loss_1
     if opts.loss_2:
         loss_2 = self.forward_loss(F.normalize(clip_emb), F.normalize(cap_emb), '_low_lvel')
-        loss = loss + loss_2*opts.other_loss_weight
+        loss = loss + loss_2*opts.weight_2
     if opts.loss_5:
         loss_5 = (self.forward_loss(F.normalize(vid_emb), F.normalize(vid_emb), '_vid_inloss') + self.forward_loss(F.normalize(para_emb), F.normalize(para_emb), '_para_inloss'))/2
-        loss = loss + loss_5
+        loss = loss + loss_5*opts.weight_5
 
     if opts.loss_6:
         loss_6 = (self.forward_loss(F.normalize(clip_emb), F.normalize(clip_emb), '_clip_inloss') + self.forward_loss(F.normalize(cap_emb), F.normalize(cap_emb), '_cap_inloss'))/2
-        loss = loss + loss_6
+        loss = loss + loss_6*opts.weight_6
 
 
     # compute gradient and do SGD step

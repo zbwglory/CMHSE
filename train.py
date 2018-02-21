@@ -80,7 +80,9 @@ def main():
   parser.add_argument('--center_loss_weight', default=1, type=float,
             help='weight of center loss')
 
-  parser.add_argument('--other_loss_weight', default=1, type=float)
+  parser.add_argument('--weight_2', default=1, type=float)
+  parser.add_argument('--weight_5', default=1, type=float)
+  parser.add_argument('--weight_6', default=1, type=float)
   parser.add_argument('--decode_rnn_type', default='seq2seq')
 
   parser.add_argument('--data_switch', default=0, type=int)
