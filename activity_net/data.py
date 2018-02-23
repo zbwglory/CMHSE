@@ -32,6 +32,7 @@ class PrecompDataset(data.Dataset):
     self.video_emb = h5py.File(osp.join(this_dir, 'data', 'sub_activitynet_v1-3.c3d.hdf5-0'),'r',swmr=True)
 
     self.length = len(self.ann_id)
+    self.feat_name = opt.feat_name
 
   def img_cap_feat_combine(self, video_feat, caption_feat, cur_vid):
 
@@ -94,7 +95,11 @@ class PrecompDataset(data.Dataset):
   def __getitem__(self, index):
     # handle the image redundancy
     cur_vid = self.ann_id[index]
-    image_data = self.video_emb[cur_vid]['c3d_features'].value
+    if self.feat_name == 'c3d':
+        image_data = self.video_emb[cur_vid]['c3d_features'].value
+    if self.feat_name == 'icep':
+        image_data = np.load('/data1/bwzhang/anet/ICEP_V3_global_pool_skip_8_direct_resize/'+cur_vid+'.npz')['frame_scores'].squeeze()
+#    image_data = self.video_emb[cur_vid]['c3d_features'].value
     image = torch.Tensor(image_data)
     caption_json = self.jsondict[cur_vid]['sentences']
 
@@ -111,7 +116,7 @@ def collate_fn(data_batch):
 
   # Merge images
   lengths_clip = torch.cat(_lengths_clip, 0)
-  clips = torch.zeros(len(lengths_clip), lengths_clip.max(), 500)
+  clips = torch.zeros(len(lengths_clip), lengths_clip.max(), _clips[0][0].shape[1])
   _cur_ind = 0
   for i, _vid_seg in enumerate(_clips):
     for j, vid in enumerate(_vid_seg):
@@ -120,7 +125,7 @@ def collate_fn(data_batch):
       _cur_ind += 1
 
   lengths_video = torch.Tensor([len(x) for x in _video]).long()
-  videos = torch.zeros(len(_video), lengths_video.max(), 500)
+  videos = torch.zeros(len(_video), lengths_video.max(), _video[0].shape[1])
   for i, vid in enumerate(_video):
     end = lengths_video[i]
     videos[i, :end, :] = vid[:end, : ]
@@ -141,7 +146,6 @@ def collate_fn(data_batch):
     end = lengths_paragraph[i]
     paragraphs[i, :end] = cap[:end ]
 
-  #embed()
 
   return clips, captions, videos, paragraphs, lengths_clip, lengths_cap, lengths_video, lengths_paragraph, _num_clip, _num_caption, _index, _cur_vid
 

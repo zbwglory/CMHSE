@@ -25,6 +25,8 @@ def main():
             help='path to datasets')
   parser.add_argument('--data_name', default='anet_precomp',
             help='anet_precomp')
+  parser.add_argument('--feat_name', default='c3d',
+            help='c3d or icep')
   parser.add_argument('--vocab_path', default='./vocab/',
             help='Path to saved vocabulary pickle files.')
   parser.add_argument('--margin', default=0.2, type=float,
