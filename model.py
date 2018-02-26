@@ -119,6 +119,11 @@ class VSE(object):
                      measure=opt.measure,
                      max_violation=opt.max_violation)
 
+    self.weak_criterion = GroupWiseContrastiveLoss(margin=opt.margin,
+                     measure=opt.measure,
+                     max_violation=opt.max_violation)
+
+
     params = list(self.txt_enc.parameters())
     params += list(self.clip_enc.parameters())
     params += list(self.vid_seq_enc.parameters())
@@ -198,6 +203,14 @@ class VSE(object):
     self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
     return loss
 
+  def forward_weak_loss(self, clip_emb, cap_emb, num_clips, num_caps, name, **kwargs):
+    """Compute the loss given pairs of image and caption embeddings
+    """
+    loss = self.weak_criterion(clip_emb, cap_emb, num_clips, num_caps)
+    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
+    return loss
+
+
   def train_emb(self, opts, clips, captions, videos, paragraphs,
       lengths_clip, lengths_cap, lengths_video, lengths_paragraph,
       num_clips, num_caps, ind, cur_vid, *args):
@@ -219,9 +232,18 @@ class VSE(object):
 
     loss_1 = self.forward_loss(F.normalize(vid_emb), F.normalize(para_emb), '_vid')
     loss = loss + loss_1
+
     if opts.loss_2:
-        loss_2 = self.forward_loss(F.normalize(clip_emb), F.normalize(cap_emb), '_low_lvel')
+        if opts.weak_loss2:
+            loss_2 = self.forward_weak_loss(F.normalize(clip_emb), F.normalize(cap_emb), num_clips, num_caps, '_wlow_lvel')
+        else:
+            loss_2 = self.forward_loss(F.normalize(clip_emb), F.normalize(cap_emb), '_low_lvel')
         loss = loss + loss_2*opts.weight_2
+
+    if opts.loss_3:
+        loss_3 = self.forward_loss(F.normalize(vid_context), F.normalize(para_context), '_ctx_low_lvel')
+        loss = loss + loss_3*opts.weight_3
+
     if opts.loss_5:
         loss_5 = (self.forward_loss(F.normalize(vid_emb), F.normalize(vid_emb), '_vid_inloss') + self.forward_loss(F.normalize(para_emb), F.normalize(para_emb), '_para_inloss'))/2
         loss = loss + loss_5*opts.weight_5

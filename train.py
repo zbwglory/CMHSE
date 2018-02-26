@@ -83,6 +83,7 @@ def main():
             help='weight of center loss')
 
   parser.add_argument('--weight_2', default=1, type=float)
+  parser.add_argument('--weight_3', default=1, type=float)
   parser.add_argument('--weight_5', default=1, type=float)
   parser.add_argument('--weight_6', default=1, type=float)
   parser.add_argument('--decode_rnn_type', default='seq2seq')
@@ -92,7 +93,7 @@ def main():
   parser.add_argument('--loss_3', action='store_true')
   parser.add_argument('--loss_5', action='store_true')
   parser.add_argument('--loss_6', action='store_true')
-  parser.add_argument('--no_correspond', action='store_true')
+  parser.add_argument('--weak_loss2', action='store_true')
   parser.add_argument('--reconstruct_term', action='store_true')
   parser.add_argument('--lowest_reconstruct_term', action='store_true')
 

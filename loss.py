@@ -63,7 +63,9 @@ class GroupWiseContrastiveLoss(nn.Module):
       cost_s = cost_s.max(1)[0]
       cost_im = cost_im.max(0)[0]
 
-    return cost_s.sum() + cost_im.sum()
+    #embed()
+    return (cost_s.sum() + cost_im.sum()).div(len(num_clips) * len(num_caps))
+    #return cost_s.sum() + cost_im.sum()
 
 class ContrastiveLoss(nn.Module):
   def __init__(self, margin=0, measure=False, max_violation=False):
@@ -103,6 +105,7 @@ class ContrastiveLoss(nn.Module):
       cost_s = cost_s.max(1)[0]
       cost_im = cost_im.max(0)[0]
 
+    #embed()
     return (cost_s.sum() + cost_im.sum()).div(im.shape[0] * s.shape[0])
     # return cost_s.sum()
 
