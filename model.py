@@ -312,7 +312,7 @@ class VSE(object):
         loss = loss + loss_6*opts.weight_6
 
     if opts.reconstruct_loss:
-        loss_recon = (self.forward_reconstruct_loss(F.normalize(clip_recon), F.normalize(clip_emb.detach()), '_clip_recon') + self.forward_reconstruct_loss(F.normalize(cap_recon), F.normalize(cap_emb.detach()), '_cap_recon'))
+        loss_recon = (self.forward_reconstruct_loss(clip_recon, clip_emb.detach(), '_clip_recon') + self.forward_reconstruct_loss(cap_recon, cap_emb.detach(), '_cap_recon'))
         loss = loss + loss_recon * opts.weight_recon
 
 
