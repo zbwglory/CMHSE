@@ -217,7 +217,7 @@ def train(opt, train_loader, model, epoch, val_loader):
     # validate at every val_step
     if model.Eiters % opt.val_step == 0:
       validate(opt, val_loader, model)
-      model.train_start()
+      model.train_start(opt)
 
 
 def validate(opt, val_loader, model):
