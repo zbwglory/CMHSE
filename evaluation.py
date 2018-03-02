@@ -77,14 +77,14 @@ def LogReporter(tb_logger, result, epoch, name):
         tb_logger.log_value(name+key, result[key], step=epoch)
     return
 
-def encode_data(model, data_loader, log_step=10, logging=print, contextual_model=True):
+def encode_data(opt, model, data_loader, log_step=10, logging=print, contextual_model=True):
   """Encode all images and captions loadable by `data_loader`
   """
   batch_time = AverageMeter()
   val_logger = LogCollector()
 
   # switch to evaluate mode
-  model.val_start()
+  model.val_start(opt)
 
   end = time.time()
 

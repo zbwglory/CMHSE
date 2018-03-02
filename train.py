@@ -5,8 +5,8 @@ import shutil
 
 import torch
 
-import activity_net.data as data
-# import didemo_dev.data as data
+# import activity_net.data as data
+import didemo_dev.data as data
 from anet_vocab import Vocabulary
 from model import VSE
 from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter
@@ -86,6 +86,7 @@ def main():
   parser.add_argument('--weight_3', default=1, type=float)
   parser.add_argument('--weight_5', default=1, type=float)
   parser.add_argument('--weight_6', default=1, type=float)
+  parser.add_argument('--weight_recon', default=1, type=float)
   parser.add_argument('--decode_rnn_type', default='seq2seq')
 
   parser.add_argument('--data_switch', default=0, type=int)
@@ -94,7 +95,7 @@ def main():
   parser.add_argument('--loss_5', action='store_true')
   parser.add_argument('--loss_6', action='store_true')
   parser.add_argument('--weak_loss2', action='store_true')
-  parser.add_argument('--reconstruct_term', action='store_true')
+  parser.add_argument('--reconstruct_loss', action='store_true')
   parser.add_argument('--lowest_reconstruct_term', action='store_true')
 
   opt = parser.parse_args()
@@ -164,7 +165,7 @@ def main():
     best_rsum = max(rsum, best_rsum)
     save_checkpoint({
       'epoch': epoch + 1,
-      'model': model.state_dict(),
+      'model': model.state_dict(opt),
       'best_rsum': best_rsum,
       'opt': opt,
       'Eiters': model.Eiters,
@@ -178,7 +179,7 @@ def train(opt, train_loader, model, epoch, val_loader):
   train_logger = LogCollector()
 
   # switch to train mode
-  model.train_start()
+  model.train_start(opt)
 
   end = time.time()
   for i, train_data in enumerate(train_loader):
@@ -222,7 +223,7 @@ def train(opt, train_loader, model, epoch, val_loader):
 def validate(opt, val_loader, model):
     # compute the encoding for all the validation images and captions
     vid_seq_embs, para_seq_embs, clip_embs, cap_embs, _, _, num_clips, cur_vid_total = encode_data(
-        model, val_loader, opt.log_step, logging.info, contextual_model=True)
+        opt, model, val_loader, opt.log_step, logging.info, contextual_model=True)
 
     # caption retrieval
     vid_clip_rep, _, _ = i2t(clip_embs, cap_embs, measure=opt.measure)
