@@ -13,7 +13,7 @@ def cosine_sim(im, s):
   return im.mm(s.t())
 
 class GroupWiseContrastiveLoss(nn.Module):
-  def __init__(self, margin=0, measure=False, max_violation=False):
+  def __init__(self, margin=0, measure=False, max_violation=False, norm=True):
     super(GroupWiseContrastiveLoss, self).__init__()
     self.margin = margin
     if measure == 'order':
@@ -21,6 +21,7 @@ class GroupWiseContrastiveLoss(nn.Module):
     else:
       self.sim = cosine_sim
 
+    self.norm = norm
     self.max_violation = max_violation
 
   def forward(self, im, s, num_clips, num_caps):
@@ -64,11 +65,14 @@ class GroupWiseContrastiveLoss(nn.Module):
       cost_im = cost_im.max(0)[0]
 
     #embed()
-    return (cost_s.sum() + cost_im.sum()).div(len(num_clips) * len(num_caps))
+    if self.norm:
+    	return (cost_s.sum() + cost_im.sum()).div(len(num_clips) * len(num_caps))
+    else:
+        return cost_s.sum() + cost_im.sum()
     #return cost_s.sum() + cost_im.sum()
 
 class ContrastiveLoss(nn.Module):
-  def __init__(self, margin=0, measure=False, max_violation=False):
+  def __init__(self, margin=0, measure=False, max_violation=False, norm=True):
     super(ContrastiveLoss, self).__init__()
     self.margin = margin
     if measure == 'order':
@@ -76,6 +80,7 @@ class ContrastiveLoss(nn.Module):
     else:
       self.sim = cosine_sim
 
+    self.norm = norm
     self.max_violation = max_violation
 
   def forward(self, im, s):
@@ -105,8 +110,11 @@ class ContrastiveLoss(nn.Module):
       cost_s = cost_s.max(1)[0]
       cost_im = cost_im.max(0)[0]
 
-    #embed()
-    return (cost_s.sum() + cost_im.sum()).div(im.shape[0] * s.shape[0])
+    loss = cost_s.sum() + cost_im.sum()
+    if self.norm:
+    	return (cost_s.sum() + cost_im.sum()).div(im.shape[0] * s.shape[0])
+    else:
+    	return cost_s.sum() + cost_im.sum()
     # return cost_s.sum()
 
 

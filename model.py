@@ -101,6 +101,7 @@ class EncoderText(nn.Module):
 
 class VSE(object):
   def __init__(self, opt):
+    self.norm = opt.norm
     self.grad_clip = opt.grad_clip
     self.clip_enc = EncoderImage(opt.img_dim, opt.img_first_size,
                   rnn_type=opt.rnn_type)
@@ -121,11 +122,11 @@ class VSE(object):
     # Loss and Optimizer
     self.criterion = ContrastiveLoss(margin=opt.margin,
                      measure=opt.measure,
-                     max_violation=opt.max_violation)
+                     max_violation=opt.max_violation, norm=self.norm)
 
     self.weak_criterion = GroupWiseContrastiveLoss(margin=opt.margin,
                      measure=opt.measure,
-                     max_violation=opt.max_violation)
+                     max_violation=opt.max_violation, norm=self.norm)
 
 
     params = list(self.txt_enc.parameters())
@@ -142,7 +143,7 @@ class VSE(object):
         self.vid_seq_dec.cuda()
         self.txt_seq_dec.cuda()
 
-        self.criterion_Euclid_Distance = EuclideanLoss()
+        self.criterion_Euclid_Distance = EuclideanLoss(norm=self.norm)
 
         params += list(self.vid_seq_dec.parameters())
         params += list(self.txt_seq_dec.parameters())

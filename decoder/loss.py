@@ -10,8 +10,9 @@ import torch.nn.functional as F
 from IPython import embed
 
 class EuclideanLoss(nn.Module):
-  def __init__(self):
+  def __init__(self, norm=True):
     super(EuclideanLoss, self).__init__()
+    self.norm = norm
 
   def forward_loss(self, clip_remap, clip_emb):
     # compute image-sentence score matrix
@@ -19,7 +20,10 @@ class EuclideanLoss(nn.Module):
 
     score_sub = torch.sqrt((score**2).sum(dim=1))
 
-    return score_sub.mean()
+    if self.norm:
+    	return score_sub.mean()
+    else:
+        return score_sub.sum()
 
   def forward(self, clip_remap, clip_emb):
       return self.forward_loss(clip_remap, clip_emb)

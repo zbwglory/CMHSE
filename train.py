@@ -97,6 +97,7 @@ def main():
   parser.add_argument('--weak_loss2', action='store_true')
   parser.add_argument('--reconstruct_loss', action='store_true')
   parser.add_argument('--lowest_reconstruct_term', action='store_true')
+  parser.add_argument('--norm', action='store_true')
 
   opt = parser.parse_args()
   print (opt)
