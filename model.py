@@ -279,8 +279,8 @@ class VSE(object):
     for i, end_place in enumerate(num_caps):
         para_reshape_emb[i, :end_place, :] = para_emb[i,:].view(1,1,-1).expand(1, end_place, para_emb.shape[1])
 
-    frame_emb  = self.frame_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
-    word_emb = self.word_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
+    frame_emb  = self.clip_seq_dec(vid_reshape_emb, Variable(torch.Tensor(num_clips)))
+    word_emb = self.sent_seq_dec(para_reshape_emb, Variable(torch.Tensor(num_caps)))
 
     return frame_emb, word_emb
 

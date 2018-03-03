@@ -23,7 +23,7 @@ def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--data_path', default='/data2/bwzhang/anet_img/captions/',
             help='path to datasets')
-  parser.add_argument('--data_name', default='anet_precomp',
+  parser.add_argument('data_name', default='anet_precomp',
             help='anet_precomp')
   parser.add_argument('--feat_name', default='c3d',
             help='c3d or icep')
