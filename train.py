@@ -5,8 +5,6 @@ import shutil
 
 import torch
 
-# import activity_net.data as data
-import didemo_dev.data as data
 from anet_vocab import Vocabulary
 from model import VSE
 from evaluation import i2t, t2i, AverageMeter, LogCollector, encode_data, LogReporter
@@ -18,90 +16,96 @@ import argparse
 
 from IPython import embed
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--data_path', default='/data2/bwzhang/anet_img/captions/',
+    help='path to datasets')
+parser.add_argument('data_name', default='anet_precomp',
+    help='anet_precomp')
+parser.add_argument('--feat_name', default='c3d',
+    help='c3d or icep')
+parser.add_argument('--vocab_path', default='./vocab/',
+    help='Path to saved vocabulary pickle files.')
+parser.add_argument('--margin', default=0.2, type=float,
+    help='Rank loss margin.')
+parser.add_argument('--num_epochs', default=30, type=int,
+    help='Number of training epochs.')
+parser.add_argument('--batch_size', default=64, type=int,
+    help='Size of a training mini-batch.')
+parser.add_argument('--word_dim', default=300, type=int,
+    help='Dimensionality of the word embedding.')
+parser.add_argument('--embed_size', default=1024, type=int,
+    help='Dimensionality of the joint embedding.')
+parser.add_argument('--grad_clip', default=0., type=float,
+    help='Gradient clipping threshold.')
+parser.add_argument('--num_layers', default=1, type=int,
+    help='Number of GRU layers.')
+parser.add_argument('--learning_rate', default=.001, type=float,
+    help='Initial learning rate.')
+parser.add_argument('--lr_update', default=10, type=int,
+    help='Number of epochs to update the learning rate.')
+parser.add_argument('--workers', default=10, type=int,
+    help='Number of data loader workers.')
+parser.add_argument('--log_step', default=10, type=int,
+    help='Number of steps to print and record the log.')
+parser.add_argument('--val_step', default=500, type=int,
+    help='Number of steps to run validation.')
+parser.add_argument('--logger_name', default='runs/runX',
+    help='Path to save the model and Tensorboard log.')
+parser.add_argument('--resume', default='', type=str, metavar='PATH',
+    help='path to latest checkpoint (default: none)')
+parser.add_argument('--max_violation', action='store_true',
+    help='Use max instead of sum in the rank loss.')
+parser.add_argument('--img_dim', default=500, type=int,
+    help='Dimensionality of the image embedding.')
+parser.add_argument('--measure', default='cosine',
+    help='Similarity measure used (cosine|order)')
+parser.add_argument('--use_abs', action='store_true',
+    help='Take the absolute value of embedding vectors.')
+parser.add_argument('--no_imgnorm', action='store_true',
+    help='Do not normalize the image embeddings.')
+parser.add_argument('--gpu_id', default=0, type=int,
+    help='GPU to use.')
+parser.add_argument('--rnn_type', default='maxout', choices=['maxout', 'seq2seq', 'attention'],
+    help='Type of recurrent model.')
+parser.add_argument('--img_first_size', default=1024, type=int,
+    help='first img layer emb size')
+parser.add_argument('--cap_first_size', default=1024, type=int,
+    help='first cap layer emb size')
+parser.add_argument('--img_first_dropout', default=0, type=float,
+    help='first img layer emb size')
+parser.add_argument('--cap_first_dropout', default=0, type=float,
+    help='first cap layer emb size')
+parser.add_argument('--center_loss_weight', default=1, type=float,
+    help='weight of center loss')
+
+parser.add_argument('--weight_2', default=1, type=float)
+parser.add_argument('--weight_3', default=1, type=float)
+parser.add_argument('--weight_5', default=1, type=float)
+parser.add_argument('--weight_6', default=1, type=float)
+parser.add_argument('--weight_recon', default=1, type=float)
+parser.add_argument('--lowest_weight_recon', default=1, type=float)
+parser.add_argument('--decode_rnn_type', default='seq2seq')
+
+parser.add_argument('--data_switch', default=0, type=int)
+parser.add_argument('--loss_2', action='store_true')
+parser.add_argument('--loss_3', action='store_true')
+parser.add_argument('--loss_5', action='store_true')
+parser.add_argument('--loss_6', action='store_true')
+parser.add_argument('--weak_loss2', action='store_true')
+parser.add_argument('--reconstruct_loss', action='store_true')
+parser.add_argument('--lowest_reconstruct_loss', action='store_true')
+parser.add_argument('--norm', action='store_true')
+
+opt = parser.parse_args()
+print (opt)
+
+if opt.data_name == 'anet_precomp':
+  import activity_net.data as data
+if opt.data_name == 'didemo_precomp':
+  import didemo_dev.data as data
+
 def main():
   # Hyper Parameters
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--data_path', default='/data2/bwzhang/anet_img/captions/',
-            help='path to datasets')
-  parser.add_argument('data_name', default='anet_precomp',
-            help='anet_precomp')
-  parser.add_argument('--feat_name', default='c3d',
-            help='c3d or icep')
-  parser.add_argument('--vocab_path', default='./vocab/',
-            help='Path to saved vocabulary pickle files.')
-  parser.add_argument('--margin', default=0.2, type=float,
-            help='Rank loss margin.')
-  parser.add_argument('--num_epochs', default=30, type=int,
-            help='Number of training epochs.')
-  parser.add_argument('--batch_size', default=64, type=int,
-            help='Size of a training mini-batch.')
-  parser.add_argument('--word_dim', default=300, type=int,
-            help='Dimensionality of the word embedding.')
-  parser.add_argument('--embed_size', default=1024, type=int,
-            help='Dimensionality of the joint embedding.')
-  parser.add_argument('--grad_clip', default=0., type=float,
-            help='Gradient clipping threshold.')
-  parser.add_argument('--num_layers', default=1, type=int,
-            help='Number of GRU layers.')
-  parser.add_argument('--learning_rate', default=.001, type=float,
-            help='Initial learning rate.')
-  parser.add_argument('--lr_update', default=10, type=int,
-            help='Number of epochs to update the learning rate.')
-  parser.add_argument('--workers', default=10, type=int,
-            help='Number of data loader workers.')
-  parser.add_argument('--log_step', default=10, type=int,
-            help='Number of steps to print and record the log.')
-  parser.add_argument('--val_step', default=500, type=int,
-            help='Number of steps to run validation.')
-  parser.add_argument('--logger_name', default='runs/runX',
-            help='Path to save the model and Tensorboard log.')
-  parser.add_argument('--resume', default='', type=str, metavar='PATH',
-            help='path to latest checkpoint (default: none)')
-  parser.add_argument('--max_violation', action='store_true',
-            help='Use max instead of sum in the rank loss.')
-  parser.add_argument('--img_dim', default=500, type=int,
-            help='Dimensionality of the image embedding.')
-  parser.add_argument('--measure', default='cosine',
-            help='Similarity measure used (cosine|order)')
-  parser.add_argument('--use_abs', action='store_true',
-            help='Take the absolute value of embedding vectors.')
-  parser.add_argument('--no_imgnorm', action='store_true',
-            help='Do not normalize the image embeddings.')
-  parser.add_argument('--gpu_id', default=0, type=int,
-            help='GPU to use.')
-  parser.add_argument('--rnn_type', default='maxout', choices=['maxout', 'seq2seq', 'attention'],
-            help='Type of recurrent model.')
-  parser.add_argument('--img_first_size', default=1024, type=int,
-            help='first img layer emb size')
-  parser.add_argument('--cap_first_size', default=1024, type=int,
-            help='first cap layer emb size')
-  parser.add_argument('--img_first_dropout', default=0, type=float,
-            help='first img layer emb size')
-  parser.add_argument('--cap_first_dropout', default=0, type=float,
-            help='first cap layer emb size')
-  parser.add_argument('--center_loss_weight', default=1, type=float,
-            help='weight of center loss')
-
-  parser.add_argument('--weight_2', default=1, type=float)
-  parser.add_argument('--weight_3', default=1, type=float)
-  parser.add_argument('--weight_5', default=1, type=float)
-  parser.add_argument('--weight_6', default=1, type=float)
-  parser.add_argument('--weight_recon', default=1, type=float)
-  parser.add_argument('--lowest_weight_recon', default=1, type=float)
-  parser.add_argument('--decode_rnn_type', default='seq2seq')
-
-  parser.add_argument('--data_switch', default=0, type=int)
-  parser.add_argument('--loss_2', action='store_true')
-  parser.add_argument('--loss_3', action='store_true')
-  parser.add_argument('--loss_5', action='store_true')
-  parser.add_argument('--loss_6', action='store_true')
-  parser.add_argument('--weak_loss2', action='store_true')
-  parser.add_argument('--reconstruct_loss', action='store_true')
-  parser.add_argument('--lowest_reconstruct_loss', action='store_true')
-  parser.add_argument('--norm', action='store_true')
-
-  opt = parser.parse_args()
-  print (opt)
 
   torch.cuda.set_device(opt.gpu_id)
 
