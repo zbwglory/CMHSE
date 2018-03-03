@@ -87,6 +87,7 @@ def main():
   parser.add_argument('--weight_5', default=1, type=float)
   parser.add_argument('--weight_6', default=1, type=float)
   parser.add_argument('--weight_recon', default=1, type=float)
+  parser.add_argument('--lowest_weight_recon', default=1, type=float)
   parser.add_argument('--decode_rnn_type', default='seq2seq')
 
   parser.add_argument('--data_switch', default=0, type=int)
@@ -96,7 +97,7 @@ def main():
   parser.add_argument('--loss_6', action='store_true')
   parser.add_argument('--weak_loss2', action='store_true')
   parser.add_argument('--reconstruct_loss', action='store_true')
-  parser.add_argument('--lowest_reconstruct_term', action='store_true')
+  parser.add_argument('--lowest_reconstruct_loss', action='store_true')
   parser.add_argument('--norm', action='store_true')
 
   opt = parser.parse_args()
