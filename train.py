@@ -117,6 +117,7 @@ def main():
   console.setFormatter(formatter)
   logging.getLogger('').addHandler(console)
 
+  logging.info(opt)
 
   # Load Vocabulary Wrapper
   vocab_path = os.path.join(opt.vocab_path, '%s_vocab_total.pkl' % opt.data_name)
