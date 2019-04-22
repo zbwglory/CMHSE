@@ -357,13 +357,13 @@ class VSE(object):
         loss = loss + loss_recon * opts.weight_recon
 
     if opts.lowest_reconstruct_loss:
-        clips_var = torch.zeros(lengths_clip.sum(), opts.img_dim)
+        clips_var = torch.zeros(lengths_clip.sum().item(), opts.img_dim)
         curpos = 0
         for i in range(clips.shape[0]):
             clips_var[curpos: curpos+lengths_clip[i],:] = clips[i,0:lengths_clip[i],:]
             curpos = curpos + lengths_clip[i]
 
-        words_var = Variable(torch.zeros(lengths_cap.sum(), 300)).cuda()
+        words_var = Variable(torch.zeros(lengths_cap.sum().item(), 300)).cuda()
         curpos = 0
         for i in range(captions.shape[0]):
             words_var[curpos: curpos+lengths_cap[i],:] = word[i,0:lengths_cap[i],:]

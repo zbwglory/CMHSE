@@ -8,6 +8,7 @@ import torch
 import subprocess
 import time
 import datetime
+import glob
 
 this_dir = osp.abspath(osp.join(osp.dirname(__file__), '..'))
 
@@ -23,6 +24,11 @@ def __string2time( instr):
     return out
 
 def __getLength_mix(filename):
+    filename_old = filename
+    filename = filename.split('.')[0]
+    filename = glob.glob(filename+'*')
+    filename = filename[0]
+    print filename_old, filename
     mixstr = __getLength(filename)[0]
     mixstr = mixstr.split('Duration:')[1]
     mixstr = mixstr.split(', start:')[0]
@@ -54,8 +60,10 @@ def __pre_compile_dataset(jsondict):
     cur_vid_num_seg = cur_vid['num_segments']
     if cur_vid_name not in compile_dict:
       compile_dict[cur_vid_name] = {}
-      compile_dict[cur_vid_name]['duration'] = __getLength_mix('/data1/bwzhang/research/data/LocalizingMoments/videos/'+cur_vid['video'])
-      feat_leng = np.load('/data2/bwzhang/research/data/LocalizingMoments/ICEP_V3_global_pool_no_skip_direct_resize/'+cur_vid_name+'.npz')['frame_scores'].shape[0]
+      #compile_dict[cur_vid_name]['duration'] = __getLength_mix('/data1/bwzhang/research/data/LocalizingMoments/videos/'+cur_vid['video'])
+      compile_dict[cur_vid_name]['duration'] = __getLength_mix('/data1/bwzhang/videos/'+cur_vid['video'])
+      #feat_leng = np.load('/data2/bwzhang/research/data/LocalizingMoments/ICEP_V3_global_pool_no_skip_direct_resize/'+cur_vid_name+'.npz')['frame_scores'].shape[0]
+      feat_leng = np.load('/data2/bwzhang/ICEP_V3_global_pool_no_skip_direct_resize/'+cur_vid_name+'.npz')['frame_scores'].shape[0]
       compile_dict[cur_vid_name]['feature_leng'] = feat_leng
       compile_dict[cur_vid_name]['num_segments'] = cur_vid_num_seg
       compile_dict[cur_vid_name]['times'] = []
@@ -107,7 +115,7 @@ def main():
     with open('val_data_bwzhang.json', 'w') as outfile:
         jsonmod.dump(data, outfile)
     data = json_data('test_data')
-    with open('testdata_bwzhang.json', 'w') as outfile:
+    with open('test_data_bwzhang.json', 'w') as outfile:
         jsonmod.dump(data, outfile)
 
 
