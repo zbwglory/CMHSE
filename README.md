@@ -28,7 +28,7 @@ We presume the input model is a GPU stored model.
 
 ### Model Training
 
-To reproduce our experiments with HSE, please use **train.py** and follow the instructions below. To train HSE with \tau=5e-4, please with 
+To reproduce our experiments with HSE, please use **train.py** and follow the instructions below. We reported the results at the 15th epoch. To train HSE with \tau=5e-4, please with 
 
     $ --reconstruct_loss --lowest_reconstruct_loss
     
