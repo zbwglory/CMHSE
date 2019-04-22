@@ -9,7 +9,7 @@ The following packages are required to run the scripts:
 
 - Package [tensorboardX](https://github.com/lanpa/tensorboardX) and NLTK
 
-- Dataset: please download [features](https://drive.google.com/drive/folders/1341zliZg8-kveVFqRIgmreG8re_JcoUy?usp=sharing) (The feature is still uploading.) and put them into the folder data/anet_precomp and data/didemo_precomp
+- Dataset: please download [features](https://drive.google.com/drive/folders/1341zliZg8-kveVFqRIgmreG8re_JcoUy?usp=sharing) (The feature is ~~still uploading~~ uploaded.) and put them into the folder data/anet_precomp and data/didemo_precomp
 
 
 ### Model Evaluation
@@ -36,7 +36,7 @@ For example, to train HSE with \tau=5e-4 on ActivityNet with C3D feature:
 
     $ python train.py anet_precomp --feat_name c3d --img_dim 500 --low_level_loss --reconstruct_loss --lowest_reconstruct_loss --norm
     
-To train HSE with \tau=5e-4 on ActivityNet with Inception feature (The feature is still being uploaded):
+To train HSE with \tau=5e-4 on ActivityNet with Inception feature ~~(The feature is still being uploaded)~~:
 
     $ python train.py anet_precomp --feat_name icep --img_dim 2048 --low_level_loss --reconstruct_loss --lowest_reconstruct_loss --norm
     
@@ -73,4 +73,5 @@ We thank following repos providing helpful components/functions in our work.
 ## Contacts
 Please report bugs and errors to
   
-    Bowen Zhang: zbwglory@gmail.com
+    Bowen Zhang: zbwglory [at] gmail.com
+    Hexiang Hu: hexiang.frank.hu [at] gmail.com
