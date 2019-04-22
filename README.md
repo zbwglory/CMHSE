@@ -11,7 +11,7 @@ The following packages are required to run the scripts:
 
 - Dataset: please download [features](https://drive.google.com/drive/folders/1341zliZg8-kveVFqRIgmreG8re_JcoUy?usp=sharing) (The feature is ~~still uploading~~ uploaded.) and put them into the folder data/anet_precomp and data/didemo_precomp
 
-**Warning** The data is extremly large. It might takes a while for downloading. C3D and ICEP for ActivityNet are ~30G and ~60G, respectively. ICEP for Didemo is ~60G. 
+- **Warning** The data is extremly large. It might takes a while for downloading. C3D and ICEP for ActivityNet are ~30G and ~60G, respectively. ICEP for Didemo is ~60G. 
 
 
 ### Model Evaluation
