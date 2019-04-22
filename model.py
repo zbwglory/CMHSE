@@ -331,26 +331,17 @@ class VSE(object):
     loss = 0
 
     loss_1 = self.forward_loss(F.normalize(vid_emb), F.normalize(para_emb), '_vid')
-    loss = loss + loss_1
+    loss_3 = self.forward_loss(F.normalize(vid_context), F.normalize(para_context), '_ctx_low_lvel')
+    loss_5 = (self.forward_loss(F.normalize(vid_emb), F.normalize(vid_emb), '_vid_inloss') + self.forward_loss(F.normalize(para_emb), F.normalize(para_emb), '_para_inloss'))/2
+    loss = loss + loss_1 + loss_3 + loss_5
 
-    if opts.loss_2:
-        if opts.weak_loss2:
+    if opts.low_level_loss:
+        if opts.weak_low_level_loss:
             loss_2 = self.forward_weak_loss(F.normalize(clip_emb), F.normalize(cap_emb), num_clips, num_caps, '_wlow_lvel')
         else:
             loss_2 = self.forward_loss(F.normalize(clip_emb), F.normalize(cap_emb), '_low_lvel')
-        loss = loss + loss_2*opts.weight_2
-
-    if opts.loss_3:
-        loss_3 = self.forward_loss(F.normalize(vid_context), F.normalize(para_context), '_ctx_low_lvel')
-        loss = loss + loss_3*opts.weight_3
-
-    if opts.loss_5:
-        loss_5 = (self.forward_loss(F.normalize(vid_emb), F.normalize(vid_emb), '_vid_inloss') + self.forward_loss(F.normalize(para_emb), F.normalize(para_emb), '_para_inloss'))/2
-        loss = loss + loss_5*opts.weight_5
-
-    if opts.loss_6:
         loss_6 = (self.forward_loss(F.normalize(clip_emb), F.normalize(clip_emb), '_clip_inloss') + self.forward_loss(F.normalize(cap_emb), F.normalize(cap_emb), '_cap_inloss'))/2
-        loss = loss + loss_6*opts.weight_6
+        loss = loss + loss_2 + loss_6
 
     if opts.reconstruct_loss:
         loss_recon = (self.forward_reconstruct_loss(clip_recon, clip_emb.detach(), '_clip_recon') + self.forward_reconstruct_loss(cap_recon, cap_emb.detach(), '_cap_recon'))

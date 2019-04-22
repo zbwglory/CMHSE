@@ -75,23 +75,13 @@ parser.add_argument('--img_first_dropout', default=0, type=float,
     help='first img layer emb size')
 parser.add_argument('--cap_first_dropout', default=0, type=float,
     help='first cap layer emb size')
-parser.add_argument('--center_loss_weight', default=1, type=float,
-    help='weight of center loss')
 
-parser.add_argument('--weight_2', default=1, type=float)
-parser.add_argument('--weight_3', default=1, type=float)
-parser.add_argument('--weight_5', default=1, type=float)
-parser.add_argument('--weight_6', default=1, type=float)
-parser.add_argument('--weight_recon', default=1, type=float)
-parser.add_argument('--lowest_weight_recon', default=1, type=float)
+parser.add_argument('--weight_recon', default=0.0005, type=float)
+parser.add_argument('--lowest_weight_recon', default=0.0001, type=float)
 parser.add_argument('--decode_rnn_type', default='seq2seq')
 
-parser.add_argument('--data_switch', default=0, type=int)
-parser.add_argument('--loss_2', action='store_true')
-parser.add_argument('--loss_3', action='store_true')
-parser.add_argument('--loss_5', action='store_true')
-parser.add_argument('--loss_6', action='store_true')
-parser.add_argument('--weak_loss2', action='store_true')
+parser.add_argument('--low_level_loss', action='store_true')
+parser.add_argument('--weak_low_level_loss', action='store_true')
 parser.add_argument('--reconstruct_loss', action='store_true')
 parser.add_argument('--lowest_reconstruct_loss', action='store_true')
 parser.add_argument('--norm', action='store_true')
