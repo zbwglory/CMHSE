@@ -1,5 +1,4 @@
 *.pyc
 *.hdf5
 runs
-*.npz
 *.tar
