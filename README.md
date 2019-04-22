@@ -1,4 +1,4 @@
-**The code is synced with the code that is released in our lab's github: https://github.com/Sha-Lab/CMHSE **
+# The code is synced with the code that is released in our lab's github: https://github.com/Sha-Lab/CMHSE
 
 # Cross-Modal and Hierarchical Modeling of Video and Text
 The code repository for "[Cross-Modal and Hierarchical Modeling of Video and Text](https://arxiv.org/abs/1810.07212)" in PyTorch
