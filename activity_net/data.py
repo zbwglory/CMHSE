@@ -29,7 +29,7 @@ class PrecompDataset(data.Dataset):
       self.ann_id[i] = keys
 
     # Image features
-    self.video_emb = h5py.File(osp.join(this_dir, 'data', 'sub_activitynet_v1-3.c3d.hdf5-0'),'r',swmr=True)
+    self.video_emb = h5py.File(osp.join(this_dir, 'data', 'anet_precomp', 'sub_activitynet_v1-3.c3d.hdf5-0'),'r')
 
     self.length = len(self.ann_id)
     self.feat_name = opt.feat_name
@@ -98,7 +98,7 @@ class PrecompDataset(data.Dataset):
     if self.feat_name == 'c3d':
         image_data = self.video_emb[cur_vid]['c3d_features'].value
     if self.feat_name == 'icep':
-        image_data = np.load('/data1/bwzhang/anet/ICEP_V3_global_pool_skip_8_direct_resize/'+cur_vid+'.npz')['frame_scores'].squeeze()
+        image_data = np.load(os.path.join(this_dir,'data', 'anet_precomp', 'ICEP_V3_global_pool_skip_8_direct_resize/'+cur_vid+'.npz'))['frame_scores'].squeeze()
 #    image_data = self.video_emb[cur_vid]['c3d_features'].value
     image = torch.Tensor(image_data)
     caption_json = self.jsondict[cur_vid]['sentences']
@@ -165,9 +165,11 @@ def get_precomp_loader(data_path, data_split, vocab, opt, batch_size=100,
 def get_loaders(data_name, vocab, batch_size, workers, opt):
   dpath = os.path.join(opt.data_path, data_name)
   if opt.data_name.endswith('_precomp'):
-    train_loader = get_precomp_loader(dpath, 'train', vocab, opt,
+      if opt.feat_name == 'c3d':
+          workers = 1
+      train_loader = get_precomp_loader(dpath, 'train', vocab, opt,
                       batch_size, True, workers)
-    val_loader   = get_precomp_loader(dpath, 'val_1', vocab, opt,
+      val_loader   = get_precomp_loader(dpath, 'val_1', vocab, opt,
                     batch_size, False, workers)
   return train_loader, val_loader
 

@@ -95,6 +95,7 @@ parser.add_argument('--weak_loss2', action='store_true')
 parser.add_argument('--reconstruct_loss', action='store_true')
 parser.add_argument('--lowest_reconstruct_loss', action='store_true')
 parser.add_argument('--norm', action='store_true')
+parser.add_argument('--eval_only', action='store_true')
 
 opt = parser.parse_args()
 print (opt)
@@ -153,6 +154,8 @@ def main():
       print("=> loaded checkpoint '{}' (epoch {}, best_rsum {})"
           .format(opt.resume, start_epoch, best_rsum))
       validate(opt, val_loader, model)
+      if opt.eval_only:
+        return
     else:
       print("=> no checkpoint found at '{}'".format(opt.resume))
 

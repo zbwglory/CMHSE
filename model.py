@@ -288,21 +288,21 @@ class VSE(object):
     """Compute the loss given pairs of image and caption embeddings
     """
     loss = self.criterion(clip_emb, cap_emb)
-    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
+    self.logger.update('Le'+name, loss.item(), clip_emb.size(0))
     return loss
 
   def forward_weak_loss(self, clip_emb, cap_emb, num_clips, num_caps, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
     """
     loss = self.weak_criterion(clip_emb, cap_emb, num_clips, num_caps)
-    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
+    self.logger.update('Le'+name, loss.item(), clip_emb.size(0))
     return loss
 
   def forward_reconstruct_loss(self, clip_recon, clip_emb, name, **kwargs):
     """Compute the loss given pairs of image and caption embeddings
     """
     loss = self.criterion_Euclid_Distance(clip_recon, clip_emb)
-    self.logger.update('Le'+name, loss.data[0], clip_emb.size(0))
+    self.logger.update('Le'+name, loss.item(), clip_emb.size(0))
     return loss
 
 
